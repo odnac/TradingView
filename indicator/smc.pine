@@ -1,0 +1,104 @@
+//@version=6
+indicator('SMC [odnac]', overlay = true, max_lines_count = 500, max_labels_count = 500)
+
+// ============================================================================
+// INPUT SETTINGS
+// ============================================================================
+leftBars      = input.int(36, 'Swing Left Bars',  minval = 1, tooltip = 'Number of bars to the left to detect a pivot')
+rightBars     = input.int(6,  'Swing Right Bars', minval = 1, tooltip = 'Number of bars to the right to confirm a pivot')
+showSwings    = input.bool(true, 'Show Swing Points',     tooltip = 'Toggle visibility of Swing High/Low circles')
+showLabels    = input.bool(true, 'Show BOS/CHoCH Labels', tooltip = 'Toggle visibility of structure break labels')
+showTrendMode = input.string('Background', 'Trend Visualization', options = ['Background', 'Shape', 'None'], tooltip = 'Choose how to visualize the current market trend: Background color, Bottom shapes, or None.')
+
+// ============================================================================
+// PIVOT CONFIRMATION LOGIC
+// ============================================================================
+confirmBearish() =>
+    bearCount = 0
+    closeDownCount = 0
+    for i = 1 to rightBars by 1
+        if close[i] < open[i]
+            bearCount := bearCount + 1
+        if close[i] < close[i + 1]
+            closeDownCount := closeDownCount + 1
+    bearCount >= 3 or closeDownCount >= 3
+
+confirmBullish() =>
+    bullCount = 0
+    closeUpCount = 0
+    for i = 1 to rightBars by 1
+        if close[i] > open[i]
+            bullCount := bullCount + 1
+        if close[i] > close[i + 1]
+            closeUpCount := closeUpCount + 1
+    bullCount >= 3 or closeUpCount >= 3
+
+ph = ta.pivothigh(high, leftBars, rightBars)
+pl = ta.pivotlow(low, leftBars, rightBars)
+
+// ============================================================================
+// VARIABLE MANAGEMENT & TREND DETERMINATION
+// ============================================================================
+var float lastHighPrice = na
+var int   lastHighIndex = na
+var float lastLowPrice  = na
+var int   lastLowIndex  = na
+var int   trend         = 0 // 1: Bullish, -1: Bearish, 0: Neutral
+
+if not na(ph) and confirmBearish()
+    lastHighPrice := ph
+    lastHighIndex := bar_index - rightBars
+
+if not na(pl) and confirmBullish()
+    lastLowPrice := pl
+    lastLowIndex := bar_index - rightBars
+
+// ============================================================================
+// STRUCTURE BREAK DETECTION (BOS / CHOCH)
+// ============================================================================
+colWhite = color.rgb(255, 255, 255)
+
+if not na(lastHighPrice) and ta.crossover(close, lastHighPrice)
+    if trend == -1 or trend == 0
+        trend := 1
+    line.new(lastHighIndex, lastHighPrice, bar_index, lastHighPrice, color = color.new(colWhite, 50), width = 1)
+    if showLabels
+        midX = int(math.avg(lastHighIndex, bar_index))
+        label.new(midX, lastHighPrice, text = trend == 1 and (trend[1] == -1 or trend[1] == 0) ? 'CHoCH' : 'BOS', style = label.style_label_down, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
+    lastHighPrice := na
+
+else if not na(lastLowPrice) and ta.crossunder(close, lastLowPrice)
+    if trend == 1 or trend == 0
+        trend := -1
+    line.new(lastLowIndex, lastLowPrice, bar_index, lastLowPrice, color = color.new(colWhite, 50), width = 1)
+    if showLabels
+        midX = int(math.avg(lastLowIndex, bar_index))
+        label.new(midX, lastLowPrice, text = trend == -1 and (trend[1] == 1 or trend[1] == 0) ? 'CHoCH' : 'BOS', style = label.style_label_up, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
+    lastLowPrice := na
+
+// ============================================================================
+// VISUALIZATION
+// ============================================================================
+// Swing Points
+plot(showSwings and not na(ph) and confirmBearish() ? ph : na, 'Swing High', color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+plot(showSwings and not na(pl) and confirmBullish() ? pl : na, 'Swing Low',  color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+
+trendColor = trend == 1 ? color.new(color.green, 90) : trend == -1 ? color.new(color.red, 90) : na
+
+// Background Mode
+bgcolor(showTrendMode == 'Background' ? trendColor : na, title = 'Trend Background')
+
+// Shape Mode
+plotshape(showTrendMode == 'Shape' and trend == 1, 
+     title="Bullish Trend Shape", 
+     location=location.bottom, 
+     color=trendColor, 
+     style=shape.square, 
+     size=size.tiny)
+
+plotshape(showTrendMode == 'Shape' and trend == -1, 
+     title="Bearish Trend Shape", 
+     location=location.bottom, 
+     color=trendColor, 
+     style=shape.square, 
+     size=size.tiny)
