@@ -1,0 +1,121 @@
+//@version=6
+indicator('Dow Theory [odnac]', overlay = true, max_lines_count = 500, max_labels_count = 500)
+
+// ============================================================================
+// INPUT SETTINGS
+// ============================================================================
+leftBars      = input.int(36, 'Swing Left Bars',  minval = 1, tooltip = 'Number of bars to the left to detect a pivot point')
+rightBars     = input.int(6,  'Swing Right Bars', minval = 1, tooltip = 'Number of bars to the right to confirm a pivot point')
+showSwings    = input.bool(true, 'Show Swing Points',     tooltip = 'Visualize confirmed high/low points with circles')
+showLabels    = input.bool(true, 'Show Structure Labels',  tooltip = 'Display BOS (Break of Structure) and CHoCH (Change of Character)')
+showTrendMode = input.string('Background', 'Trend Visualization', options = ['Background', 'Shape', 'None'], tooltip = 'Visual method to display the current trend')
+
+// ============================================================================
+// PIVOT CONFIRMATION LOGIC
+// ============================================================================
+// Custom functions to confirm pivot strength through price action
+confirmBearish() =>
+    bearCount = 0
+    closeDownCount = 0
+    for i = 1 to rightBars by 1
+        if close[i] < open[i]
+            bearCount := bearCount + 1
+        if close[i] < close[i + 1]
+            closeDownCount := closeDownCount + 1
+    bearCount >= 3 or closeDownCount >= 3
+
+confirmBullish() =>
+    bullCount = 0
+    closeUpCount = 0
+    for i = 1 to rightBars by 1
+        if close[i] > open[i]
+            bullCount := bullCount + 1
+        if close[i] > close[i + 1]
+            closeUpCount := closeUpCount + 1
+    bullCount >= 3 or closeUpCount >= 3
+
+// Detecting standard Pivot Points
+ph = ta.pivothigh(high, leftBars, rightBars)
+pl = ta.pivotlow(low, leftBars, rightBars)
+
+// ============================================================================
+// STATE MANAGEMENT
+// ============================================================================
+var float lastHighPrice = na
+var int   lastHighIndex = na
+var float lastLowPrice  = na
+var int   lastLowIndex  = na
+
+// Variables for Dow Theory comparison (HH/HL/LH/LL)
+var float prevHighPrice = na
+var float prevLowPrice  = na
+var int   trend         = 0 // 1: Bullish, -1: Bearish, 0: Neutral
+
+// Update Swing Highs
+if not na(ph) and confirmBearish()
+    prevHighPrice := lastHighPrice
+    lastHighPrice := ph
+    lastHighIndex := bar_index - rightBars
+
+// Update Swing Lows
+if not na(pl) and confirmBullish()
+    prevLowPrice := lastLowPrice
+    lastLowPrice := pl
+    lastLowIndex := bar_index - rightBars
+
+// ============================================================================
+// DOW THEORY TREND LOGIC
+// ============================================================================
+// Higher High (HH) and Higher Low (HL)
+isHH = lastHighPrice > prevHighPrice
+isHL = lastLowPrice > prevLowPrice
+
+// Lower High (LH) and Lower Low (LL)
+isLH = lastHighPrice < prevHighPrice
+isLL = lastLowPrice < prevLowPrice
+
+// Trend Determination based on consecutive highs/lows
+if isHH and isHL
+    trend := 1
+else if isLH and isLL
+    trend := -1
+
+// ============================================================================
+// STRUCTURE BREAK DETECTION (BOS / CHOCH)
+// ============================================================================
+colWhite = color.rgb(255, 255, 255)
+
+// Break of High (Bullish Breakout)
+if not na(lastHighPrice) and ta.crossover(close, lastHighPrice)
+    line.new(lastHighIndex, lastHighPrice, bar_index, lastHighPrice, color = color.new(colWhite, 50), width = 1)
+    if showLabels
+        midX = int(math.avg(lastHighIndex, bar_index))
+        // Determine label type based on trend transition
+        lblText = (trend == 1 and (trend[1] == -1 or trend[1] == 0)) ? 'CHoCH' : 'BOS'
+        label.new(midX, lastHighPrice, text = lblText, style = label.style_label_down, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
+    lastHighPrice := na
+
+// Break of Low (Bearish Breakout)
+else if not na(lastLowPrice) and ta.crossunder(close, lastLowPrice)
+    line.new(lastLowIndex, lastLowPrice, bar_index, lastLowPrice, color = color.new(colWhite, 50), width = 1)
+    if showLabels
+        midX = int(math.avg(lastLowIndex, bar_index))
+        lblText = (trend == -1 and (trend[1] == 1 or trend[1] == 0)) ? 'CHoCH' : 'BOS'
+        label.new(midX, lastLowPrice, text = lblText, style = label.style_label_up, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
+    lastLowPrice := na
+
+// ============================================================================
+// VISUALIZATION
+// ============================================================================
+// Plotting Confirmed Swing Points
+plot(showSwings and not na(ph) and confirmBearish() ? ph : na, 'Swing High', color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+plot(showSwings and not na(pl) and confirmBullish() ? pl : na, 'Swing Low',  color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+
+// Trend Color Assignment
+trendColor = trend == 1 ? color.new(color.green, 90) : trend == -1 ? color.new(color.red, 90) : na
+
+// Visual Outputs
+bgcolor(showTrendMode == 'Background' ? trendColor : na, title = 'Trend Background')
+
+plotshape(showTrendMode == 'Shape' and trend == 1, title="Bullish Trend", location=location.top, color=color.rgb(76, 175, 80, 90), style=shape.square, size=size.tiny)
+plotshape(showTrendMode == 'Shape' and trend == -1, title="Bearish Trend", location=location.top, color=color.rgb(255, 82, 82, 90), style=shape.square, size=size.tiny)
