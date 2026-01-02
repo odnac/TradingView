@@ -4,16 +4,15 @@ indicator('BOS & CHOCH [odnac]', overlay = true, max_lines_count = 500, max_labe
 // ============================================================================
 // INPUT SETTINGS
 // ============================================================================
-leftBars   = input.int(36, 'Swing Left Bars',  minval = 1, tooltip = 'Number of bars to the left to detect a pivot')
-rightBars  = input.int(6,  'Swing Right Bars', minval = 1, tooltip = 'Number of bars to the right to confirm a pivot')
-showSwings = input.bool(true, 'Show Swing Points',     tooltip = 'Toggle visibility of Swing High/Low circles')
-showLabels = input.bool(true, 'Show BOS/CHoCH Labels', tooltip = 'Toggle visibility of structure break labels')
-showBg     = input.bool(true, 'Show Background Color', tooltip = 'Toggle visibility of trend background color')
+leftBars      = input.int(36, 'Swing Left Bars',  minval = 1, tooltip = 'Number of bars to the left to detect a pivot')
+rightBars     = input.int(6,  'Swing Right Bars', minval = 1, tooltip = 'Number of bars to the right to confirm a pivot')
+showSwings    = input.bool(true, 'Show Swing Points',     tooltip = 'Toggle visibility of Swing High/Low circles')
+showLabels    = input.bool(true, 'Show BOS/CHoCH Labels', tooltip = 'Toggle visibility of structure break labels')
+showTrendMode = input.string('Background', 'Trend Visualization', options = ['Background', 'Shape', 'None'], tooltip = 'Choose how to visualize the current market trend: Background color, Bottom shapes, or None.')
 
 // ============================================================================
 // PIVOT CONFIRMATION LOGIC
 // ============================================================================
-// Confirms bearish swing high by checking if enough bars are bearish
 confirmBearish() =>
     bearCount = 0
     closeDownCount = 0
@@ -24,7 +23,6 @@ confirmBearish() =>
             closeDownCount := closeDownCount + 1
     bearCount >= 3 or closeDownCount >= 3
 
-// Confirms bullish swing low by checking if enough bars are bullish
 confirmBullish() =>
     bullCount = 0
     closeUpCount = 0
@@ -35,26 +33,22 @@ confirmBullish() =>
             closeUpCount := closeUpCount + 1
     bullCount >= 3 or closeUpCount >= 3
 
-// Detect pivot points
 ph = ta.pivothigh(high, leftBars, rightBars)
 pl = ta.pivotlow(low, leftBars, rightBars)
 
 // ============================================================================
 // VARIABLE MANAGEMENT & TREND DETERMINATION
 // ============================================================================
-// Store swing high/low prices and bar indices
 var float lastHighPrice = na
 var int   lastHighIndex = na
 var float lastLowPrice  = na
 var int   lastLowIndex  = na
 var int   trend         = 0 // 1: Bullish, -1: Bearish, 0: Neutral
 
-// Update swing high data when confirmed
 if not na(ph) and confirmBearish()
     lastHighPrice := ph
     lastHighIndex := bar_index - rightBars
 
-// Update swing low data when confirmed
 if not na(pl) and confirmBullish()
     lastLowPrice := pl
     lastLowIndex := bar_index - rightBars
@@ -64,7 +58,6 @@ if not na(pl) and confirmBullish()
 // ============================================================================
 colWhite = color.rgb(255, 255, 255)
 
-// Detect upward break (close crosses above last swing high)
 if not na(lastHighPrice) and ta.crossover(close, lastHighPrice)
     if trend == -1 or trend == 0
         trend := 1
@@ -74,7 +67,6 @@ if not na(lastHighPrice) and ta.crossover(close, lastHighPrice)
         label.new(midX, lastHighPrice, text = trend == 1 and (trend[1] == -1 or trend[1] == 0) ? 'CHoCH' : 'BOS', style = label.style_label_down, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
     lastHighPrice := na
 
-// Detect downward break (close crosses below last swing low)
 else if not na(lastLowPrice) and ta.crossunder(close, lastLowPrice)
     if trend == 1 or trend == 0
         trend := -1
@@ -85,12 +77,28 @@ else if not na(lastLowPrice) and ta.crossunder(close, lastLowPrice)
     lastLowPrice := na
 
 // ============================================================================
-// VISUALIZATION
+// VISUALIZATION (Updated)
 // ============================================================================
-// Plot swing high/low circles
+// Swing Points
 plot(showSwings and not na(ph) and confirmBearish() ? ph : na, 'Swing High', color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
 plot(showSwings and not na(pl) and confirmBullish() ? pl : na, 'Swing Low',  color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
 
-// Display trend background color
-bgColor = trend == 1 ? color.new(color.green, 90) : trend == -1 ? color.new(color.red, 90) : na
-bgcolor(showBg ? bgColor : na, title = 'Trend Background')
+trendColor = trend == 1 ? color.new(color.green, 90) : trend == -1 ? color.new(color.red, 90) : na
+
+// Background Mode
+bgcolor(showTrendMode == 'Background' ? trendColor : na, title = 'Trend Background')
+
+// Shape Mode
+plotshape(showTrendMode == 'Shape' and trend == 1, 
+     title="Bullish Trend Shape", 
+     location=location.bottom, 
+     color=trendColor, 
+     style=shape.square, 
+     size=size.tiny)
+
+plotshape(showTrendMode == 'Shape' and trend == -1, 
+     title="Bearish Trend Shape", 
+     location=location.bottom, 
+     color=trendColor, 
+     style=shape.square, 
+     size=size.tiny)
