@@ -1,0 +1,101 @@
+//@version=6
+indicator('BOS & CHOCH [odnac]', overlay = true, max_lines_count = 500, max_labels_count = 500)
+
+// --- 1. Input Settings ---
+leftBars   = input.int(36, 'Swing Left Bars',  minval = 1, tooltip = 'Number of bars to the left to detect a pivot')
+rightBars  = input.int(6,  'Swing Right Bars', minval = 1, tooltip = 'Number of bars to the right to confirm a pivot')
+showSwings = input.bool(true, 'Show Swing Points',     tooltip = 'Toggle visibility of Swing High/Low circles')
+showLabels = input.bool(true, 'Show BOS/CHoCH Labels', tooltip = 'Toggle visibility of structure break labels')
+
+// --- 2. Pivot Confirmation Logic ---
+// These functions filter out weak pivots by checking subsequent candle behavior
+
+// Confirms Bearish Pivot: Checks if price shows downward momentum after the peak
+confirmBearish() =>
+    bearCount = 0
+    closeDownCount = 0
+    for i = 1 to rightBars by 1
+        if close[i] < open[i]
+            bearCount := bearCount + 1
+        if close[i] < close[i + 1]
+            closeDownCount := closeDownCount + 1
+    bearCount >= 3 or closeDownCount >= 3
+
+// Confirms Bullish Pivot: Checks if price shows upward momentum after the trough
+confirmBullish() =>
+    bullCount = 0
+    closeUpCount = 0
+    for i = 1 to rightBars by 1
+        if close[i] > open[i]
+            bullCount := bullCount + 1
+        if close[i] > close[i + 1]
+            closeUpCount := closeUpCount + 1
+    bullCount >= 3 or closeUpCount >= 3
+
+// Pivot Detection
+ph = ta.pivothigh(high, leftBars, rightBars)
+pl = ta.pivotlow(low, leftBars, rightBars)
+
+// Variables for state tracking
+var float lastHighPrice = na
+var int   lastHighIndex = na
+var float lastLowPrice  = na
+var int   lastLowIndex  = na
+var int   trend         = 0 // 1: Bullish, -1: Bearish, 0: Neutral
+
+// Update confirmed swing points
+if not na(ph) and confirmBearish()
+    lastHighPrice := ph
+    lastHighIndex := bar_index - rightBars
+
+if not na(pl) and confirmBullish()
+    lastLowPrice := pl
+    lastLowIndex := bar_index - rightBars
+
+// --- 3. Structure Break Detection (BOS / CHoCH) ---
+colWhite = color.rgb(255, 255, 255)
+
+// Bullish Breakout (Price breaks above the last confirmed Swing High)
+if not na(lastHighPrice) and ta.crossover(close, lastHighPrice)
+    string labelText = ''
+    if trend == -1 or trend == 0
+        labelText := 'CHoCH' // Change of Character (Trend Reversal)
+        trend := 1
+    else
+        labelText := 'BOS'   // Break of Structure (Trend Continuation)
+
+    // Draw horizontal line for the break
+    line.new(lastHighIndex, lastHighPrice, bar_index, lastHighPrice, color = color.new(colWhite, 50), width = 1)
+
+    // Create Label
+    if showLabels
+        midX = int(math.avg(lastHighIndex, bar_index))
+        label.new(midX, lastHighPrice, text = labelText, style = label.style_label_down, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
+
+    // Reset pivot price to prevent multiple triggers from the same level
+    lastHighPrice := na
+
+// Bearish Breakout (Price breaks below the last confirmed Swing Low)
+else if not na(lastLowPrice) and ta.crossunder(close, lastLowPrice)
+    string labelText = ''
+    if trend == 1 or trend == 0
+        labelText := 'CHoCH' // Change of Character (Trend Reversal)
+        trend := -1
+    else
+        labelText := 'BOS'   // Break of Structure (Trend Continuation)
+
+    // Draw horizontal line for the break
+    line.new(lastLowIndex, lastLowPrice, bar_index, lastLowPrice, color = color.new(colWhite, 50), width = 1)
+
+    // Create Label
+    if showLabels
+        midX = int(math.avg(lastLowIndex, bar_index))
+        label.new(midX, lastLowPrice, text = labelText, style = label.style_label_up, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
+
+    // Reset pivot price
+    lastLowPrice := na
+
+// --- 4. Visualization ---
+// Plotting swing circles with user-defined toggle and offset back to the pivot bar
+plot(showSwings and not na(ph) and confirmBearish() ? ph : na, 'Swing High', color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+plot(showSwings and not na(pl) and confirmBullish() ? pl : na, 'Swing Low',  color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
