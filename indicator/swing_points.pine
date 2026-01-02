@@ -1,0 +1,119 @@
+//@version=6
+indicator('Swing high/low [odnac]', overlay = true)
+
+// ============================================================================
+// INPUT SETTINGS
+// ============================================================================
+leftBars   = input.int(36, title = 'Left Bars')
+rightBars  = input.int(6, title = 'Right Bars')
+showTrend  = input.bool(true, title = 'Show Trend Background')
+
+// ============================================================================
+// PIVOT DETECTION
+// ============================================================================
+pivotHighPrice = ta.pivothigh(high, leftBars, rightBars)
+pivotLowPrice = ta.pivotlow(low, leftBars, rightBars)
+
+// ============================================================================
+// CONFIRMATION LOGIC
+// ============================================================================
+// Checks if price shows weakness after the pivot high (bearish confirmation)
+confirmBearish() =>
+    bearCount = 0
+    closeDownCount = 0
+    for i = 1 to rightBars by 1
+        if close[i] < open[i]
+            bearCount := bearCount + 1
+            bearCount
+        if close[i] < close[i + 1]
+            closeDownCount := closeDownCount + 1
+            closeDownCount
+    bearCount >= 3 or closeDownCount >= 3
+
+// Checks if price shows strength after the pivot low (bullish confirmation)
+confirmBullish() =>
+    bullCount = 0
+    closeUpCount = 0
+    for i = 1 to rightBars by 1
+        if close[i] > open[i]
+            bullCount := bullCount + 1
+            bullCount
+        if close[i] > close[i + 1]
+            closeUpCount := closeUpCount + 1
+            closeUpCount
+    bullCount >= 3 or closeUpCount >= 3
+
+// Validate confirmed swing points
+highConfirmed = not na(pivotHighPrice) and confirmBearish()
+lowConfirmed = not na(pivotLowPrice) and confirmBullish()
+
+// ============================================================================
+// DATA MANAGEMENT (ARRAYS)
+// ============================================================================
+// Store swing high/low prices and bar indices
+var array<float> highPrices = array.new_float()
+var array<int> highBars = array.new_int()
+var array<float> lowPrices = array.new_float()
+var array<int> lowBars = array.new_int()
+
+// Add confirmed swing high data to arrays
+if highConfirmed
+    array.push(highPrices, pivotHighPrice)
+    array.push(highBars, bar_index)
+
+// Add confirmed swing low data to arrays
+if lowConfirmed
+    array.push(lowPrices, pivotLowPrice)
+    array.push(lowBars, bar_index)
+
+// ============================================================================
+// PLOTTING SIGNALS
+// ============================================================================
+float swingHighPlot = na
+float swingLowPlot = na
+
+// Check if current bar matches any stored swing high
+if array.size(highBars) > 0
+    for i = 0 to array.size(highBars) - 1 by 1
+        if bar_index == array.get(highBars, i)
+            swingHighPlot := array.get(highPrices, i)
+            swingHighPlot
+
+// Check if current bar matches any stored swing low
+if array.size(lowBars) > 0
+    for i = 0 to array.size(lowBars) - 1 by 1
+        if bar_index == array.get(lowBars, i)
+            swingLowPlot := array.get(lowPrices, i)
+            swingLowPlot
+
+// Plot swing high/low circles
+plot(swingHighPlot, title = 'Swing High Circle', color = color.rgb(255, 255, 255, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+plot(swingLowPlot, title = 'Swing Low Circle', color = color.rgb(255, 255, 255, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+
+// ============================================================================
+// TREND CALCULATION & BACKGROUND
+// ============================================================================
+color trendColor = na
+
+// Determine trend based on swing structure
+if array.size(highPrices) >= 2 and array.size(lowPrices) >= 2
+    float lastHigh = array.get(highPrices, array.size(highPrices) - 1)
+    float prevHigh = array.get(highPrices, array.size(highPrices) - 2)
+    float lastLow = array.get(lowPrices, array.size(lowPrices) - 1)
+    float prevLow = array.get(lowPrices, array.size(lowPrices) - 2)
+
+    // Higher highs and higher lows = uptrend (green)
+    if lastHigh > prevHigh and lastLow > prevLow
+        trendColor := color.new(color.green, 90)
+        trendColor
+    // Lower highs and lower lows = downtrend (red)
+    else if lastHigh < prevHigh and lastLow < prevLow
+        trendColor := color.new(color.red, 90)
+        trendColor
+    // Otherwise neutral
+    else
+        trendColor := na
+        trendColor
+
+// Display trend background color
+bgcolor(showTrend ? trendColor : na, offset = -rightBars, title = 'Trend Background')
