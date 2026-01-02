@@ -77,7 +77,7 @@ else if not na(lastLowPrice) and ta.crossunder(close, lastLowPrice)
     lastLowPrice := na
 
 // ============================================================================
-// VISUALIZATION (Updated)
+// VISUALIZATION
 // ============================================================================
 // Swing Points
 plot(showSwings and not na(ph) and confirmBearish() ? ph : na, 'Swing High', color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
