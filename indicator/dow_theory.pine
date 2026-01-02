@@ -115,7 +115,7 @@ plot(showSwings and not na(pl) and confirmBullish() ? pl : na, 'Swing Low',  col
 trendColor = trend == 1 ? color.new(color.green, 90) : trend == -1 ? color.new(color.red, 90) : na
 
 // Visual Outputs
-bgcolor(showTrendMode == 'Background' ? trendColor : na, title = 'Trend Background')
+bgcolor(showTrendMode == 'Background' ? trendColor : na, title = 'Trend Background', offset = -rightBars)
 
-plotshape(showTrendMode == 'Shape' and trend == 1, title="Bullish Trend", location=location.top, color=color.rgb(76, 175, 80, 90), style=shape.square, size=size.tiny)
-plotshape(showTrendMode == 'Shape' and trend == -1, title="Bearish Trend", location=location.top, color=color.rgb(255, 82, 82, 90), style=shape.square, size=size.tiny)
+plotshape(showTrendMode == 'Shape' and trend == 1, title="Bullish Trend", location=location.top, color=color.rgb(76, 175, 80, 90), style=shape.square, size=size.tiny, offset = -rightBars)
+plotshape(showTrendMode == 'Shape' and trend == -1, title="Bearish Trend", location=location.top, color=color.rgb(255, 82, 82, 90), style=shape.square, size=size.tiny, offset = -rightBars)
