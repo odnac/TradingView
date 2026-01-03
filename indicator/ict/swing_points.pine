@@ -1,12 +1,11 @@
 //@version=6
-indicator('Swing high/low [odnac]', overlay = true)
+indicator('Swing Points [odnac]', overlay = true)
 
 // ============================================================================
 // INPUT SETTINGS
 // ============================================================================
 leftBars   = input.int(36, title = 'Left Bars')
 rightBars  = input.int(6, title = 'Right Bars')
-showTrend  = input.bool(true, title = 'Show Trend Background')
 
 // ============================================================================
 // PIVOT DETECTION
@@ -89,31 +88,3 @@ if array.size(lowBars) > 0
 // Plot swing high/low circles
 plot(swingHighPlot, title = 'Swing High Circle', color = color.rgb(255, 255, 255, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
 plot(swingLowPlot, title = 'Swing Low Circle', color = color.rgb(255, 255, 255, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
-
-// ============================================================================
-// TREND CALCULATION & BACKGROUND
-// ============================================================================
-color trendColor = na
-
-// Determine trend based on swing structure
-if array.size(highPrices) >= 2 and array.size(lowPrices) >= 2
-    float lastHigh = array.get(highPrices, array.size(highPrices) - 1)
-    float prevHigh = array.get(highPrices, array.size(highPrices) - 2)
-    float lastLow = array.get(lowPrices, array.size(lowPrices) - 1)
-    float prevLow = array.get(lowPrices, array.size(lowPrices) - 2)
-
-    // Higher highs and higher lows = uptrend (green)
-    if lastHigh > prevHigh and lastLow > prevLow
-        trendColor := color.new(color.green, 90)
-        trendColor
-    // Lower highs and lower lows = downtrend (red)
-    else if lastHigh < prevHigh and lastLow < prevLow
-        trendColor := color.new(color.red, 90)
-        trendColor
-    // Otherwise neutral
-    else
-        trendColor := na
-        trendColor
-
-// Display trend background color
-bgcolor(showTrend ? trendColor : na, offset = -rightBars, title = 'Trend Background')
