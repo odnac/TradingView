@@ -1,0 +1,23 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © odnac
+
+//@version=6
+indicator("Sweep Candle [odnac]", overlay=true)
+
+
+// --------------------------------
+// Sweep Candle
+// --------------------------------
+sweepColor = input.color(color.white, 'Sweep Bar', inline = 'sweep1', group = 'Sweep')
+sweep =  high > high[1] and low < low[1]
+barcolor((sweep ? sweepColor : na) , title = 'Sweep')
+
+
+// --------------------------------
+// Engulfing Candle
+// --------------------------------
+enColor = input.color(color.yellow, 'Engulfing Bar', inline = 'engul1', group = 'Engulfing')
+enBullish= close > open and low < low[1] and open[1] < close and close[1] < open[1] and high > high[1]
+enBearish = close < open and high > high[1] and close < open[1] and close[1] > open[1] and low < low[1]
+engul = enBullish or enBearish
+barcolor((engul ? enColor : na), title = 'Engulfing')
