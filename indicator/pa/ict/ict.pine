@@ -1,8 +1,5 @@
 //@version=6
-
-// Market Structure + fvg & OB 
-
-indicator('ICT [odnac]', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+indicator('ICT', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
 
 // ============================================================================
 // INPUT PARAMETERS - FVG & OB
@@ -14,6 +11,8 @@ show_fvg  = input.bool(true, 'Show Fair Value Gaps', group = group_fvgob)
 strong_candle_version = input.string('V1', 'Strong Candle Condition', options = ['V1', 'V2', 'V3'], 
      tooltip = 'V1: 1st body + 3rd body <= 2nd body\nV2: (1st range + 3rd body <= 2nd body) OR (1st body + 3rd range <= 2nd body)\nV3: 1st range + 3rd range <= 2nd range', 
      group = group_fvgob)
+v1_use_additional = input.bool(true, 'V1: Use Additional Condition', tooltip = 'Enable/disable the additional N candles comparison for V1', group = group_fvgob)
+v1_candle_count = input.int(2, 'V1: Number of Candles to Compare', minval = 1, maxval = 10, tooltip = 'For V1 only: Sum of N previous candles bodies must be <= middle candle body\nExample: 4 means [2]+[3]+[4]+[5] bodies <= [1] body', group = group_fvgob)
 max_bars_extend = input.int(100, 'Maximum Bars to Extend', minval = 10, maxval = 500, 
      tooltip = 'Maximum number of bars to extend boxes before stopping', group = group_fvgob)
 
@@ -53,13 +52,34 @@ check_common_condition() =>
 
     strong_middle = false
     if strong_candle_version == 'V1'
-        strong_middle := body_1st + body_3rd <= body_2nd
+        // V1 Original: 1st body + 3rd body <= 2nd body
+        original_condition = body_1st + body_3rd <= body_2nd
+        
+        // V1 Additional: Sum of N previous candles bodies <= middle body (optional)
+        // Example: if v1_candle_count = 4, then [2]+[3]+[4]+[5] <= [1]
+        if v1_use_additional
+            sum_bodies = 0.0
+            
+            // Sum bodies of N candles before middle candle [1]
+            for i = 2 to (1 + v1_candle_count) by 1
+                sum_bodies += math.abs(close[i] - open[i])
+            
+            additional_condition = sum_bodies <= body_2nd
+            
+            // Both conditions must be true
+            strong_middle := original_condition and additional_condition
+        else
+            // Only use original condition
+            strong_middle := original_condition
+        strong_middle
     else if strong_candle_version == 'V2'
         condition1 = range_1st + body_3rd <= body_2nd
         condition2 = body_1st + range_3rd <= body_2nd
         strong_middle := condition1 or condition2
+        strong_middle
     else
         strong_middle := range_1st + range_3rd <= range_2nd
+        strong_middle
 
     tails_dont_touch = false
     if is_bullish[1]
@@ -172,7 +192,7 @@ if isValidLow
     lastLowPrice := pl
     lastLowIndex := bar_index - rightBars
 
-colWhite = color.white
+colYellow = color.yellow
 
 // ============================================================================
 // Market Structure - BREAK DETECTION
@@ -182,20 +202,20 @@ if versionSelect == 'V1'
         label_text = (trend == -1 or trend == 0) ? 'CHoCH' : 'BOS'
         trend := 1
         if showLines
-            line.new(lastHighIndex, lastHighPrice, bar_index, lastHighPrice, color = color.new(colWhite, 50), width = 1)
+            line.new(lastHighIndex, lastHighPrice, bar_index, lastHighPrice, color = color.new(colYellow, 50), width = 1)
             midX = int(math.avg(lastHighIndex, bar_index))
             label.new(midX, lastHighPrice, text = label_text, style = label.style_label_down, 
-                 color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
+                 color = color.new(colYellow, 100), textcolor = colYellow, size = size.tiny)
         lastHighPrice := na
 
     else if not na(lastLowPrice) and ta.crossunder(close, lastLowPrice)
         label_text = (trend == 1 or trend == 0) ? 'CHoCH' : 'BOS'
         trend := -1
         if showLines
-            line.new(lastLowIndex, lastLowPrice, bar_index, lastLowPrice, color = color.new(colWhite, 50), width = 1)
+            line.new(lastLowIndex, lastLowPrice, bar_index, lastLowPrice, color = color.new(colYellow, 50), width = 1)
             midX = int(math.avg(lastLowIndex, bar_index))
             label.new(midX, lastLowPrice, text = label_text, style = label.style_label_up, 
-                 color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
+                 color = color.new(colYellow, 100), textcolor = colYellow, size = size.tiny)
         lastLowPrice := na
 
 else // V2
@@ -213,10 +233,10 @@ else // V2
         lastLowIndex := minIdx
         
         if showLines
-            line.new(lastHighIndex, lastHighPrice, bar_index, lastHighPrice, color = color.new(colWhite, 50), width = 1)
+            line.new(lastHighIndex, lastHighPrice, bar_index, lastHighPrice, color = color.new(colYellow, 50), width = 1)
             midX = int(math.avg(lastHighIndex, bar_index))
             label.new(midX, lastHighPrice, text = label_text, style = label.style_label_down, 
-                 color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
+                 color = color.new(colYellow, 100), textcolor = colYellow, size = size.tiny)
         lastHighPrice := na
 
     else if not na(lastLowPrice) and ta.crossunder(close, lastLowPrice)
@@ -233,17 +253,17 @@ else // V2
         lastHighIndex := maxIdx
         
         if showLines
-            line.new(lastLowIndex, lastLowPrice, bar_index, lastLowPrice, color = color.new(colWhite, 50), width = 1)
+            line.new(lastLowIndex, lastLowPrice, bar_index, lastLowPrice, color = color.new(colYellow, 50), width = 1)
             midX = int(math.avg(lastLowIndex, bar_index))
             label.new(midX, lastLowPrice, text = label_text, style = label.style_label_up, 
-                 color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
+                 color = color.new(colYellow, 100), textcolor = colYellow, size = size.tiny)
         lastLowPrice := na
 
 // ============================================================================
 // Market Structure - VISUALIZATION
 // ============================================================================
-plot(showSwings and isValidHigh ? ph : na, 'Swing High', color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
-plot(showSwings and isValidLow  ? pl : na, 'Swing Low',  color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+plot(showSwings and isValidHigh ? ph : na, 'Swing High', color = color.new(colYellow, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+plot(showSwings and isValidLow  ? pl : na, 'Swing Low',  color = color.new(colYellow, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
 
 trendColor = trend == 1 ? color.new(color.green, 90) : trend == -1 ? color.new(color.red, 90) : na
 bgcolor(showTrendMode == 'Background' ? trendColor : na)
@@ -289,7 +309,7 @@ if array.size(fvg_boxes) > 0
 [is_ob, ob_high, ob_low, _] = check_ob_condition()
 if is_ob and show_ob
     b = box.new(bar_index[2], ob_high, bar_index + 1, ob_low, 
-         border_color = color.new(color.white, 100), bgcolor = color.new(color.white, 90), border_width = 0)
+         border_color = color.new(color.yellow, 100), bgcolor = color.new(color.yellow, 90), border_width = 0)
     array.push(ob_boxes, b)
     array.push(ob_start_bars, bar_index)
 
