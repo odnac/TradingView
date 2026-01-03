@@ -1,5 +1,5 @@
 //@version=6
-indicator('SMC_v2 [odnac]', overlay = true, max_lines_count = 500, max_labels_count = 500)
+indicator('Market Structure_v2 [odnac]', overlay = true, max_lines_count = 500, max_labels_count = 500)
 
 // ============================================================================
 // INPUT SETTINGS

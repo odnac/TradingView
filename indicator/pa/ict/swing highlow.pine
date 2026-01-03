@@ -1,5 +1,5 @@
 //@version=6
-indicator('Swing Points [odnac]', overlay = true)
+indicator('Swing High/Low [odnac]', overlay = true)
 
 // ============================================================================
 // INPUT SETTINGS
