@@ -1,5 +1,5 @@
 //@version=6
-indicator('FVG & OB', overlay = true, max_boxes_count = 500)
+indicator('FVG & OB [odnac]', overlay = true, max_boxes_count = 500)
 
 // ============================================================================
 // INPUT PARAMETERS
@@ -11,6 +11,8 @@ show_fvg = input.bool(true, 'Show Fair Value Gaps', group = 'Display')
 
 // Condition settings
 strong_candle_version = input.string('V1', 'Strong Candle Condition', options = ['V1', 'V2', 'V3'], tooltip = 'V1: 1st body + 3rd body <= 2nd body\nV2: (1st range + 3rd body <= 2nd body) OR (1st body + 3rd range <= 2nd body)\nV3: 1st range + 3rd range <= 2nd range', group = 'Conditions')
+v1_use_additional = input.bool(true, 'V1: Use Additional Condition', tooltip = 'Enable/disable the additional N candles comparison for V1', group = 'Conditions')
+v1_candle_count = input.int(1, 'V1: Number of Candles to Compare', minval = 1, maxval = 10, tooltip = 'For V1 only: Sum of N previous candles bodies must be <= middle candle body\nExample: 4 means [2]+[3]+[4]+[5] bodies <= [1] body', group = 'Conditions')
 max_bars_extend = input.int(100, 'Maximum Bars to Extend', minval = 10, maxval = 500, tooltip = 'Maximum number of bars to extend boxes before stopping', group = 'Conditions')
 
 // ============================================================================
@@ -47,8 +49,25 @@ check_common_condition() =>
     // Check strong middle candle condition based on selected version
     strong_middle = false
     if strong_candle_version == 'V1'
-        // V1: Sum of 1st and 3rd bodies <= 2nd body
-        strong_middle := body_1st + body_3rd <= body_2nd
+        // V1 Original: 1st body + 3rd body <= 2nd body
+        original_condition = body_1st + body_3rd <= body_2nd
+        
+        // V1 Additional: Sum of N previous candles bodies <= middle body (optional)
+        // Example: if v1_candle_count = 4, then [2]+[3]+[4]+[5] <= [1]
+        if v1_use_additional
+            sum_bodies = 0.0
+            
+            // Sum bodies of N candles before middle candle [1]
+            for i = 2 to (1 + v1_candle_count) by 1
+                sum_bodies += math.abs(close[i] - open[i])
+            
+            additional_condition = sum_bodies <= body_2nd
+            
+            // Both conditions must be true
+            strong_middle := original_condition and additional_condition
+        else
+            // Only use original condition
+            strong_middle := original_condition
         strong_middle
     else if strong_candle_version == 'V2'
         // V2: Either condition must be true
