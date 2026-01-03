@@ -1,0 +1,38 @@
+//@version=5
+//@strategy_alert_message {{strategy.order.alert_message}}
+// ************************************** POA ************************************** //
+import dokang/POA/12 as POA
+
+start_time = input.time(timestamp("2017-01-01T09:00:00+09:00"), title="자동매매 시작")
+end_time = input.time(timestamp("2100-08-31T01:07:00+09:00"), title="자동매매 종료")
+
+pstrategy = POA.bot.new("", start_time, end_time, close_percent = 100, exit_percent = 100)
+pstrategy.start_trade()
+// ********************************************************************************* //
+
+strategy("spot",
+ overlay = true,
+ process_orders_on_close = true,
+ initial_capital = 1000,
+ default_qty_type = strategy.percent_of_equity,
+ default_qty_value = 100,
+ commission_type = strategy.commission.percent,
+ commission_value = 0.05)
+
+// stratagy
+...
+//
+
+is_long =
+is_long_close = 
+long_sl = input(2, "롱 손절 (%))")
+is_long_exit = strategy.position_avg_price * ( ( 100 - long_sl ) / 100 )
+
+// order
+if is_long
+    pstrategy.entry("spot", "strategy.long")
+    
+if is_long_close
+    pstrategy.close("spot")
+
+pstrategy.exit("exit spot", "spot", stop = is_long_exit)

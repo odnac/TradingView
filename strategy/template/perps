@@ -1,0 +1,38 @@
+//@version=5
+//@strategy_alert_message {{strategy.order.alert_message}}
+// ************************************** POA ************************************** //
+import dokang/POA/13 as POA
+
+start_time = input.time(timestamp("2017-01-01T09:00:00+09:00"), title="auto run")
+end_time = input.time(timestamp("2099-05-05T17:05:00+09:00"), title="auto stop")
+
+pstrategy = POA.bot.new("", start_time, end_time, leverage = 10)
+pstrategy.start_trade()
+// ********************************************************************************* //
+
+strategy("perps",
+ overlay=true, 
+ initial_capital = 80, 
+ default_qty_type = strategy.percent_of_equity, 
+ default_qty_value = 100, 
+ process_orders_on_close = true,  
+ commission_type = strategy.commission.percent, 
+ commission_value = 0.05)
+
+// stratagy
+...
+//
+
+is_long = 
+is_long_close = 
+long_sl = input(2.0, "SL (%))")
+is_long_exit = strategy.position_avg_price * ( ( 100 - long_sl ) / 100 )
+
+// order
+if is_long
+    pstrategy.entry("perps", "strategy.long")
+
+if is_long_close
+    pstrategy.close("perps")
+
+pstrategy.exit("exit perps", "perps", stop = is_long_exit)
