@@ -1,33 +1,27 @@
-//@version=5
-indicator("FVG & OB", overlay=true, max_boxes_count=500)
+//@version=6
+indicator('FVG & OB', overlay = true, max_boxes_count = 500)
 
 // ============================================================================
 // INPUT PARAMETERS
 // ============================================================================
 
 // Display settings
-show_ob = input.bool(true, "Show Order Blocks", group="Display")
-show_fvg = input.bool(true, "Show Fair Value Gaps", group="Display")
+show_ob = input.bool(true, 'Show Order Blocks', group = 'Display')
+show_fvg = input.bool(true, 'Show Fair Value Gaps', group = 'Display')
 
 // Condition settings
-strong_candle_version = input.string("V1", "Strong Candle Condition", 
-     options=["V1", "V2", "V3"], 
-     tooltip="V1: 1st body + 3rd body <= 2nd body\nV2: (1st range + 3rd body <= 2nd body) OR (1st body + 3rd range <= 2nd body)\nV3: 1st range + 3rd range <= 2nd range",
-     group="Conditions")
-max_bars_extend = input.int(100, "Maximum Bars to Extend", 
-     minval=10, maxval=500, 
-     tooltip="Maximum number of bars to extend boxes before stopping",
-     group="Conditions")
+strong_candle_version = input.string('V1', 'Strong Candle Condition', options = ['V1', 'V2', 'V3'], tooltip = 'V1: 1st body + 3rd body <= 2nd body\nV2: (1st range + 3rd body <= 2nd body) OR (1st body + 3rd range <= 2nd body)\nV3: 1st range + 3rd range <= 2nd range', group = 'Conditions')
+max_bars_extend = input.int(100, 'Maximum Bars to Extend', minval = 10, maxval = 500, tooltip = 'Maximum number of bars to extend boxes before stopping', group = 'Conditions')
 
 // ============================================================================
 // VARIABLES
 // ============================================================================
 
 // Arrays to store boxes and their starting bar indices
-var box[] ob_boxes = array.new_box()
-var int[] ob_start_bars = array.new_int()
-var box[] fvg_boxes = array.new_box()
-var int[] fvg_start_bars = array.new_int()
+var array<box> ob_boxes = array.new_box()
+var array<int> ob_start_bars = array.new_int()
+var array<box> fvg_boxes = array.new_box()
+var array<int> fvg_start_bars = array.new_int()
 
 // Current candle information
 is_bullish = close > open
@@ -49,30 +43,35 @@ check_common_condition() =>
     range_1st = high[2] - low[2]
     range_2nd = high[1] - low[1]
     range_3rd = high - low
-    
+
     // Check strong middle candle condition based on selected version
     strong_middle = false
-    if strong_candle_version == "V1"
+    if strong_candle_version == 'V1'
         // V1: Sum of 1st and 3rd bodies <= 2nd body
-        strong_middle := (body_1st + body_3rd) <= body_2nd
-    else if strong_candle_version == "V2"
+        strong_middle := body_1st + body_3rd <= body_2nd
+        strong_middle
+    else if strong_candle_version == 'V2'
         // V2: Either condition must be true
-        condition1 = (range_1st + body_3rd) <= body_2nd
-        condition2 = (body_1st + range_3rd) <= body_2nd
+        condition1 = range_1st + body_3rd <= body_2nd
+        condition2 = body_1st + range_3rd <= body_2nd
         strong_middle := condition1 or condition2
-    else // V3
-        // V3: Sum of 1st and 3rd ranges <= 2nd range (most intuitive)
-        strong_middle := (range_1st + range_3rd) <= range_2nd
-    
+        strong_middle
+    // V3
+    else // V3: Sum of 1st and 3rd ranges <= 2nd range (most intuitive)
+        strong_middle := range_1st + range_3rd <= range_2nd
+        strong_middle
+
     // Check if 1st and 3rd candle wicks don't touch
     tails_dont_touch = false
     if is_bullish[1] // If middle candle is bullish
         // Compare 1st candle's high with 3rd candle's low
         tails_dont_touch := high[2] < low
+        tails_dont_touch
     else if is_bearish[1] // If middle candle is bearish
         // Compare 1st candle's low with 3rd candle's high
         tails_dont_touch := low[2] > high
-    
+        tails_dont_touch
+
     [strong_middle and tails_dont_touch, strong_middle, tails_dont_touch]
 
 // ----------------------------------------------------------------------------
@@ -81,23 +80,22 @@ check_common_condition() =>
 // ----------------------------------------------------------------------------
 check_ob_condition() =>
     [common, strong, tails] = check_common_condition()
-    
+
     if not common
         [false, 0.0, 0.0, false]
-    else
-        // Check for exact patterns
-        // Bullish OB
+    // Check for exact patterns
+    else // Bullish OB
         bullish_ob_1 = is_bullish[2] and is_bullish[1] and is_bearish
         bullish_ob_2 = is_bearish[2] and is_bullish[1] and is_bullish
-        
+
         // Bearish OB
         bearish_ob_1 = is_bearish[2] and is_bearish[1] and is_bullish
         bearish_ob_2 = is_bullish[2] and is_bearish[1] and is_bearish
-        
+
         is_bullish_ob = bullish_ob_1 or bullish_ob_2
         is_bearish_ob = bearish_ob_1 or bearish_ob_2
         is_ob = is_bullish_ob or is_bearish_ob
-        
+
         if is_ob
             // OB zone is the full range of the first candle
             ob_high = high[2]
@@ -112,14 +110,13 @@ check_ob_condition() =>
 // ----------------------------------------------------------------------------
 check_fvg_condition() =>
     [common, strong, tails] = check_common_condition()
-    
+
     if not common
         [false, 0.0, 0.0, false]
-    else
-        // Check if all three candles have the same color
+    else // Check if all three candles have the same color
         all_bullish = is_bullish[2] and is_bullish[1] and is_bullish
         all_bearish = is_bearish[2] and is_bearish[1] and is_bearish
-        
+
         if all_bullish
             // Bullish FVG: gap between 1st candle's high and 3rd candle's low
             gap_bottom = high[2]
@@ -139,7 +136,7 @@ check_fvg_condition() =>
 // Check if current candle touches the box
 // ----------------------------------------------------------------------------
 box_touched(box_top, box_bottom) =>
-    not (low > box_top or high < box_bottom)
+    not(low > box_top or high < box_bottom)
 
 // ============================================================================
 // MAIN LOGIC
@@ -149,17 +146,17 @@ box_touched(box_top, box_bottom) =>
 // Update existing Order Block boxes
 // ----------------------------------------------------------------------------
 if array.size(ob_boxes) > 0
-    for i = array.size(ob_boxes) - 1 to 0
+    for i = array.size(ob_boxes) - 1 to 0 by 1
         b = array.get(ob_boxes, i)
         start_bar = array.get(ob_start_bars, i)
-        
+
         if not na(b)
             box_top = box.get_top(b)
             box_bottom = box.get_bottom(b)
             box_right = box.get_right(b)
-            
+
             bars_extended = bar_index - start_bar
-            
+
             if bars_extended >= max_bars_extend
                 // Stop extending after max bars (remove from active array)
                 array.remove(ob_boxes, i)
@@ -176,17 +173,17 @@ if array.size(ob_boxes) > 0
 // Update existing Fair Value Gap boxes
 // ----------------------------------------------------------------------------
 if array.size(fvg_boxes) > 0
-    for i = array.size(fvg_boxes) - 1 to 0
+    for i = array.size(fvg_boxes) - 1 to 0 by 1
         b = array.get(fvg_boxes, i)
         start_bar = array.get(fvg_start_bars, i)
-        
+
         if not na(b)
             box_top = box.get_top(b)
             box_bottom = box.get_bottom(b)
             box_right = box.get_right(b)
-            
+
             bars_extended = bar_index - start_bar
-            
+
             if bars_extended >= max_bars_extend
                 array.remove(fvg_boxes, i)
                 array.remove(fvg_start_bars, i)
@@ -202,10 +199,7 @@ if array.size(fvg_boxes) > 0
 [is_ob, ob_high, ob_low, is_bull_ob] = check_ob_condition()
 if is_ob and show_ob
     // Create borderless white box
-    b = box.new(bar_index[2], ob_high, bar_index + 1, ob_low, 
-                 border_color=color.new(color.white, 100), 
-                 bgcolor=color.new(color.white, 90),
-                 border_width=0)
+    b = box.new(bar_index[2], ob_high, bar_index + 1, ob_low, border_color = color.new(color.white, 100), bgcolor = color.new(color.white, 90), border_width = 0)
     array.push(ob_boxes, b)
     array.push(ob_start_bars, bar_index)
 
@@ -215,9 +209,6 @@ if is_ob and show_ob
 [is_fvg, fvg_top, fvg_bottom, is_bull_fvg] = check_fvg_condition()
 if is_fvg and show_fvg
     // Create borderless yellow box
-    b = box.new(bar_index[2], fvg_top, bar_index + 1, fvg_bottom, 
-                 border_color=color.new(color.yellow, 100), 
-                 bgcolor=color.new(color.yellow, 90),
-                 border_width=0)
+    b = box.new(bar_index[2], fvg_top, bar_index + 1, fvg_bottom, border_color = color.new(color.yellow, 100), bgcolor = color.new(color.yellow, 90), border_width = 0)
     array.push(fvg_boxes, b)
     array.push(fvg_start_bars, bar_index)
