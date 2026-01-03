@@ -1,0 +1,93 @@
+//@version=6
+indicator('Overlay Candle [odnac]', overlay = true, max_boxes_count = 500, max_lines_count = 500)
+
+// --------------------------------
+// input data
+// --------------------------------
+candle_type = input.string('D', title = 'Candle Type', options = ['M3' ,'M5', 'M10', 'M15', 'M30', 'M45', 'H1', 'H2', 'H4', 'H6', 'H12', 'D', 'W', 'M'])
+color_green = input.color(color.rgb(8, 153, 129, 70), 'Bullish Color')
+color_red = input.color(color.rgb(242, 54, 69, 70), 'Bearish Color')
+hide_weekends = input.bool(true, 'Hide Weekends')
+
+// --------------------------------
+// Logic
+// --------------------------------
+
+// check weekend
+is_weekend = dayofweek == dayofweek.saturday or dayofweek == dayofweek.sunday
+
+// Variables
+var float o = na
+var float c = na
+var float h = na
+var float l = na
+var box b = na
+var line highWick = na
+var line lowWick = na
+
+// Determine new period based on candle type
+isNewPeriod = switch candle_type
+    'M3' => bool(ta.change(time('3')))
+    'M5' => bool(ta.change(time('5')))
+    'M10' => bool(ta.change(time('10')))    
+    'M15' => bool(ta.change(time('15')))    
+    'M30' => bool(ta.change(time('30')))
+    'M45' => bool(ta.change(time('45')))
+    'H1' => bool(ta.change(time('60')))
+    'H2' => bool(ta.change(time('120')))
+    'H4' => bool(ta.change(time('240')))
+    'H6' => bool(ta.change(time('360')))
+    'H12' => bool(ta.change(time('720')))
+    'D' => bool(ta.change(time('D')))
+    'W' => bool(ta.change(time('W')))
+    'M' => bool(ta.change(time('M')))
+    => false
+
+// Show candle condition (hide on weekends if enabled)
+showCandle = not(hide_weekends and is_weekend)
+
+// Initialize or update candle data
+if na(o) or isNewPeriod
+    o := open
+    c := close
+    h := high
+    l := low
+    b := na
+    highWick := na
+    lowWick := na
+    lowWick
+else
+    c := close
+    h := math.max(h, high)
+    l := math.min(l, low)
+    l
+
+// --------------------------------
+// Draw candles
+// --------------------------------
+if showCandle
+    candleColor = o < c ? color_green : color_red
+
+    if na(b)
+        b := box.new(left = bar_index, top = math.max(o, c), right = bar_index + 1, bottom = math.min(o, c), border_width = 0, bgcolor = candleColor)
+        highWick := line.new(x1 = bar_index, y1 = h, x2 = bar_index, y2 = math.max(o, c), color = candleColor, width = 2)
+        lowWick := line.new(x1 = bar_index, y1 = l, x2 = bar_index, y2 = math.min(o, c), color = candleColor, width = 2)
+        lowWick
+    else
+        box.set_right(b, bar_index + 1)
+        box.set_top(b, math.max(o, c))
+        box.set_bottom(b, math.min(o, c))
+        box.set_bgcolor(b, candleColor)
+
+        center = math.floor((box.get_left(b) + box.get_right(b)) / 2)
+        line.set_x1(highWick, center)
+        line.set_x2(highWick, center)
+        line.set_y1(highWick, h)
+        line.set_y2(highWick, math.max(o, c))
+        line.set_color(highWick, candleColor)
+
+        line.set_x1(lowWick, center)
+        line.set_x2(lowWick, center)
+        line.set_y1(lowWick, l)
+        line.set_y2(lowWick, math.min(o, c))
+        line.set_color(lowWick, candleColor)
