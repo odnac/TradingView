@@ -1,0 +1,44 @@
+//@version=6
+indicator("Volume [odnac]")
+
+display_Option = display.all - display.status_line
+
+volumeType = input.string("basic", "", options=["basic", "hlc3", "strength"], inline = 'volume')
+volumeLength = input.int(24, '', inline = 'volume')
+
+
+// ------------------------------------
+// Volume
+// ------------------------------------
+H = high
+L = low
+C = close
+
+bullish_color = color.rgb(38, 166, 154, 20)
+bearish_color = color.rgb(239, 83, 80, 20)
+
+// Relative Strength Volume
+B = volume * (C - L) / (H - L)
+S = volume * (H - C) / (H - L)
+
+// HLC3 Volume
+hlc3VolumeBullish = close > hlc3
+hlc3VolumeBearish = close < hlc3
+
+hlc3Bull = hlc3VolumeBullish ? volume : 0.0
+hlc3Bear = hlc3VolumeBearish ? volume : 0.0
+
+// basic volume
+basicColor = close >= open ? bullish_color : bearish_color
+
+// plot volume
+plot((volumeType == "strength" ? (volume != 0 ? S + B : na) : na), title="Buying Volume (Strength)", color=bullish_color, style=plot.style_columns, editable=false, display=display.pane, format=format.volume)
+plot((volumeType == "strength" ? (volume != 0 ? S : na) : na), title="Selling Volume (Strength)", color=bearish_color, style=plot.style_columns, editable=false, display=display.pane, format=format.volume)
+
+plot((volumeType == "hlc3" ? hlc3Bull : na), title="HLC3 Bullish Volume", style=plot.style_columns, color=bullish_color, format = format.volume)
+plot((volumeType == "hlc3" ? hlc3Bear : na), title="HLC3 Bearish Volume", style=plot.style_columns, color=bearish_color, format = format.volume)
+
+plot((volumeType == "basic" ? volume : na), title="Basic Volume", style=plot.style_columns, color=basicColor, format = format.volume)
+
+volMA = ta.sma(volume, volumeLength)
+plot(volMA, 'volume MA', color.white, format = format.volume)
