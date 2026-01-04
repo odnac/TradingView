@@ -1,5 +1,5 @@
 //@version=6
-indicator("lower")
+indicator("MFI")
 display_Option = display.all - display.status_line
 
 showMFI = input.bool(false, 'show MFI')
