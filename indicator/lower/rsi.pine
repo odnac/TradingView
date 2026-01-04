@@ -2,7 +2,7 @@
 // © odnac
 
 //@version=6
-indicator("lower")
+indicator("RSI")
 display_Option = display.all - display.status_line
 
 showRSI = input.bool(false, 'show RSI')
