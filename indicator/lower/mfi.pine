@@ -1,0 +1,55 @@
+//@version=6
+indicator("lower")
+display_Option = display.all - display.status_line
+
+showMFI = input.bool(false, 'show MFI')
+
+// ------------------------------------
+// MFI
+// ------------------------------------
+mfiLen = input.int(title="Period", minval=1, defval=14, group = 'MFI', display = display_Option)
+mfiSrc = input(title="Source", defval=hlc3, group = 'MFI', display = display_Option)
+mfiLbR = input(title="Pivot Lookback Right", defval=5, display = display.data_window, group = 'MFI')
+mfiLbL = input(title="Pivot Lookback Left", defval=5, display = display.data_window, group = 'MFI')
+mfiRangeUpper = input(title="Max of Lookback Range", defval=60, display = display.data_window, group = 'MFI')
+mfiRangeLower = input(title="Min of Lookback Range", defval=5, display = display.data_window, group = 'MFI')
+mfiBearColor = color.red
+mfiBullColor = color.green
+mfiTextColor = color.white
+mfiNoneColor = color.new(color.white, 100)
+mfiOsc = ta.mfi(mfiSrc, mfiLen)
+
+plot(showMFI ? mfiOsc : na, title="mfi", linewidth=1, color=color.rgb(41, 98, 255))
+mfiObLevel = hline(showMFI ? 70 : na, title="Overbought", color=#787B86, linestyle=hline.style_dotted)
+mfiOsLevel = hline(showMFI ? 30 : na, title="Oversold", color=#787B86, linestyle=hline.style_dotted)
+
+mfiPlFound = na(ta.pivotlow(mfiOsc, mfiLbL, mfiLbR)) ? false : true
+mfiPhFound = na(ta.pivothigh(mfiOsc, mfiLbL, mfiLbR)) ? false : true
+_mfiInRange(cond) =>
+	bars = ta.barssince(cond == true)
+	mfiRangeLower <= bars and bars <= mfiRangeUpper
+
+//------------------------------------------------------------------------------
+// Regular Bullish
+// Osc: Higher Low
+mfiInRangePl = _mfiInRange(mfiPlFound[1])
+mfiOscHL = mfiOsc[mfiLbR] > ta.valuewhen(mfiPlFound, mfiOsc[mfiLbR], 1) and mfiInRangePl
+
+mfiPriceLL = low[mfiLbR] < ta.valuewhen(mfiPlFound, low[mfiLbR], 1)
+mfiBullCond = mfiPriceLL and mfiOscHL and mfiPlFound
+
+plot(showMFI ? mfiPlFound ? mfiOsc[mfiLbR] : na : na, offset=-mfiLbR, title="Regular Bullish", color=(mfiBullCond ? mfiBullColor : mfiNoneColor), display = display.pane)
+plotshape(showMFI ? mfiBullCond ? mfiOsc[mfiLbR] : na : na, offset=-mfiLbR, title="Regular Bullish Label", style=shape.circle, location=location.absolute, color=mfiBullColor, textcolor=mfiTextColor)
+
+//------------------------------------------------------------------------------
+// Regular Bearish
+// Osc: Lower High
+mfiInRangePh = _mfiInRange(mfiPhFound[1])
+mfiOscLH = mfiOsc[mfiLbR] < ta.valuewhen(mfiPhFound, mfiOsc[mfiLbR], 1) and mfiInRangePh
+
+mfiPriceHH = high[mfiLbR] > ta.valuewhen(mfiPhFound, high[mfiLbR], 1)
+
+mfiBearCond = mfiPriceHH and mfiOscLH and mfiPhFound
+
+plot(showMFI ? mfiPhFound ? mfiOsc[mfiLbR] : na : na, offset=-mfiLbR, title="Regular Bearish", color=(mfiBearCond ? mfiBearColor : mfiNoneColor), display = display.pane)
+plotshape(showMFI ? mfiBearCond ? mfiOsc[mfiLbR] : na : na, offset=-mfiLbR, title="Regular Bearish Label", style=shape.circle, location=location.absolute, color=mfiBearColor, textcolor=mfiTextColor)
