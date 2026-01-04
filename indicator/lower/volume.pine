@@ -1,5 +1,5 @@
 //@version=6
-indicator("Volume [odnac]")
+indicator("Volume [odnac]", format = format.volume)
 
 
 volumeType = input.string("basic", "", options=["basic", "hlc3", "strength"], inline = 'volume')
