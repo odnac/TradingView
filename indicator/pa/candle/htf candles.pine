@@ -1,0 +1,138 @@
+//@version=6
+indicator('HTF Candles [odnac]', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_bars_back = 5000)
+
+// ============================================================================
+// Type Definitions
+// ============================================================================
+
+type Candle
+    float o
+    float c
+    float h
+    float l
+    box body
+    line wick_up
+    line wick_down
+
+type CandleGroup
+    array<Candle> candles
+    string htf
+    int max_candles
+
+// ============================================================================
+// Input Settings
+// ============================================================================
+
+// HTF Settings
+bool show_htf = input.bool(true, 'Show HTF Candles', inline = 'htf', group = 'htf')
+string htf_period = input.timeframe('1D', '', inline = 'htf', group = 'htf')
+int max_candles = input.int(3, '', inline = 'htf', group = 'htf')
+
+// Custom Daily Settings
+bool use_custom_daily = input.bool(false, 'Custom daily candle open', inline='custom')
+string custom_daily_time = input.string('Midnight', '', options=['Midnight', '8:30', '9:30'], inline='custom')
+
+// Colors
+color bull_body_color = input.color(color.new(#089981, 0), 'Body', inline = 'body', group='htf')
+color bear_body_color = input.color(color.new(#f23645, 0), '', inline = 'body', group='htf')
+color bull_border_color = input.color(color.new(#089981, 0), 'Borders', inline = 'border', group='htf')
+color bear_border_color = input.color(color.new(#f23645, 0), '', inline = 'border', group='htf')
+color bull_wick_color = input.color(color.new(#089981, 0), 'Wick', inline = 'wick', group='htf')
+color bear_wick_color = input.color(color.new(#f23645, 0), '', inline = 'wick', group='htf')
+
+// Spacing
+int chart_offset = input.int(10, 'Padding from current candles', minval = 1, group='htf')
+int candle_spacing = input.int(1, 'Space between candles', minval = 1, maxval = 4, group='htf')
+int candle_width = input.int(1, 'Candle Width', minval = 1, maxval = 4, group='htf') * 2
+
+// ============================================================================
+// Variables & Helper
+// ============================================================================
+
+var array<Candle> candles = array.new<Candle>(0)
+var CandleGroup group = CandleGroup.new(candles, htf_period, max_candles)
+
+isValidTimeframe(string tf) =>
+    current_sec = timeframe.in_seconds()
+    htf_sec = timeframe.in_seconds(tf)
+    htf_sec > current_sec
+
+// ============================================================================
+// Logic Functions
+// ============================================================================
+
+reorderCandles(CandleGroup cg, int offset) =>
+    size = array.size(cg.candles)
+    if size > 0
+        for i = size - 1 to 0
+            candle = array.get(cg.candles, i)
+            buffer = offset + (candle_width + candle_spacing) * (size - i - 1)
+            
+            box.set_left(candle.body, bar_index + buffer)
+            box.set_right(candle.body, bar_index + candle_width + buffer)
+            line.set_x1(candle.wick_up, bar_index + candle_width / 2 + buffer)
+            line.set_x2(candle.wick_up, bar_index + candle_width / 2 + buffer)
+            line.set_x1(candle.wick_down, bar_index + candle_width / 2 + buffer)
+            line.set_x2(candle.wick_down, bar_index + candle_width / 2 + buffer)
+
+monitorNewCandle(CandleGroup cg) =>
+
+    is_new_candle = ta.change(time(cg.htf)) > 0
+    
+    if use_custom_daily and cg.htf == '1D'
+        if custom_daily_time == 'Midnight'
+            is_new_candle := dayofweek != dayofweek[1]
+        else if custom_daily_time == '8:30'
+            is_new_candle := not na(time(timeframe.period, "0830-0831")) and na(time(timeframe.period, "0830-0831")[1])
+        else if custom_daily_time == '9:30'
+            is_new_candle := not na(time(timeframe.period, "0930-0931")) and na(time(timeframe.period, "0930-0931")[1])
+    
+    if is_new_candle
+        candle = Candle.new()
+        candle.o := open
+        candle.c := close
+        candle.h := high
+        candle.l := low
+        
+        is_bull = candle.c > candle.o
+        
+        candle.body := box.new(bar_index, math.max(candle.o, candle.c), bar_index + 2, math.min(candle.o, candle.c), is_bull ? bull_border_color : bear_border_color, 1, bgcolor = is_bull ? bull_body_color : bear_body_color)
+        candle.wick_up := line.new(bar_index + 1, candle.h, bar_index, math.max(candle.o, candle.c), color = is_bull ? bull_wick_color : bear_wick_color)
+        candle.wick_down := line.new(bar_index + 1, math.min(candle.o, candle.c), bar_index, candle.l, color = is_bull ? bull_wick_color : bear_wick_color)
+        
+        array.unshift(cg.candles, candle)
+        if array.size(cg.candles) > cg.max_candles
+            old_candle = array.pop(cg.candles)
+            box.delete(old_candle.body)
+            line.delete(old_candle.wick_up)
+            line.delete(old_candle.wick_down)
+
+updateCurrentCandle(CandleGroup cg, int offset) =>
+    if array.size(cg.candles) > 0
+        candle = array.first(cg.candles)
+        candle.h := math.max(high, candle.h)
+        candle.l := math.min(low, candle.l)
+        candle.c := close
+        
+        is_bull = candle.c > candle.o
+        box.set_top(candle.body, math.max(candle.o, candle.c))
+        box.set_bottom(candle.body, math.min(candle.o, candle.c))
+        box.set_bgcolor(candle.body, is_bull ? bull_body_color : bear_body_color)
+        box.set_border_color(candle.body, is_bull ? bull_border_color : bear_border_color)
+        line.set_y1(candle.wick_up, candle.h)
+        line.set_y2(candle.wick_up, math.max(candle.o, candle.c))
+        line.set_y1(candle.wick_down, candle.l)
+        line.set_y2(candle.wick_down, math.min(candle.o, candle.c))
+        line.set_color(candle.wick_up, is_bull ? bull_wick_color : bear_wick_color)
+        line.set_color(candle.wick_down, is_bull ? bull_wick_color : bear_wick_color)
+        
+        if barstate.islast
+            reorderCandles(cg, offset)
+
+// ============================================================================
+// Execution
+// ============================================================================
+
+if show_htf and isValidTimeframe(htf_period)
+    monitorNewCandle(group)
+    updateCurrentCandle(group, chart_offset)
