@@ -1,0 +1,23 @@
+//@version=6
+indicator("Divider [odnac]", overlay = true)
+
+// ============================================================================
+// DIVIDERS
+// ============================================================================
+showWeeklyDiver = input.bool(true, 'Show Weekly Divider', group = 'Dividers')
+showDailyDiver = input.bool(true, 'Show Daily Divider', group = 'Dividers')
+showh1 = input.bool(false, 'Show H1 on Daily Divider', group = 'Dividers')
+
+showWeeklyTimeframe = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 240
+showDailyTimeframeFalse = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier < 60
+showDailyTimeframeTrue = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 60
+showDailyTimeframe = showh1 ? showDailyTimeframeTrue : showDailyTimeframeFalse
+
+is_new_week = dayofweek == dayofweek.sunday and dayofweek[1] != dayofweek.sunday
+is_new_day  = dayofmonth != dayofmonth[1]
+
+if showWeeklyDiver and is_new_week and showWeeklyTimeframe
+    line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 70), extend = extend.both, style = line.style_dashed)
+
+if showDailyDiver and is_new_day and showDailyTimeframe
+    line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dashed)
