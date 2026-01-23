@@ -1,0 +1,468 @@
+//@version=6
+indicator('ICT [odnac]', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+// ============================================================================
+// INPUT PARAMETERS - FVG & OB
+// ============================================================================
+
+// Display settings
+show_ob = input.bool(true, 'Show Order Blocks', group = 'FVG & OB Display')
+show_fvg = input.bool(true, 'Show Fair Value Gaps', group = 'FVG & OB Display')
+
+// Condition settings
+strong_candle_version = input.string('V1', 'Strong Candle Condition', options = ['V1', 'V2', 'V3'], tooltip = 'V1: 1st body + 3rd body <= 2nd body\nV2: (1st range + 3rd body <= 2nd body) OR (1st body + 3rd range <= 2nd body)\nV3: 1st range + 3rd range <= 2nd range', group = 'FVG & OB Conditions')
+v1_use_additional = input.bool(true, 'V1: Use Additional Condition', tooltip = 'Enable/disable the additional N candles comparison for V1', group = 'FVG & OB Conditions')
+v1_candle_count = input.int(1, 'V1: Number of Candles to Compare', minval = 1, maxval = 10, tooltip = 'For V1 only: Sum of N previous candles bodies must be <= middle candle body\nExample: 4 means [2]+[3]+[4]+[5] bodies <= [1] body', group = 'FVG & OB Conditions')
+max_bars_extend = input.int(100, 'Maximum Bars to Extend', minval = 10, maxval = 500, tooltip = 'Maximum number of bars to extend boxes before stopping', group = 'FVG & OB Conditions')
+
+// ============================================================================
+// INPUT PARAMETERS - MARKET STRUCTURE
+// ============================================================================
+versionSelect = input.string('V2', 'Version', options = ['V1', 'V2'], 
+     tooltip = 'V1: Use only pivot-detected swings | V2: Auto-update swing points between breaks', group = 'Market Structure')
+leftBars      = input.int(36, 'Swing Left Bars', minval = 1, 
+     tooltip = 'Number of bars to the left to detect a pivot', group = 'Market Structure')
+rightBars     = input.int(7,  'Swing Right Bars', minval = 1, 
+     tooltip = 'Number of bars to the right to confirm a pivot', group = 'Market Structure')
+showSwings    = input.bool(true, 'Show Swing Points', 
+     tooltip = 'Toggle visibility of Swing High/Low circles', group = 'Market Structure')
+showLines     = input.bool(true, 'Show BOS/CHoCH', 
+     tooltip = 'Toggle visibility of structure break lines and labels', group = 'Market Structure')
+showTrendMode = input.string('Background', 'Trend Visualization', 
+     options = ['Background', 'Shape', 'None'], 
+     tooltip = 'Choose how to visualize the current market trend', group = 'Market Structure')
+
+// ============================================================================
+// INPUT PARAMETERS - DIVIDERS & CANDLE PATTERNS
+// ============================================================================
+group_candle = 'Candle Patterns'
+showWeeklyDiver = input.bool(true, 'Show Weekly Divider', group = 'Dividers')
+showDailyDiver = input.bool(true, 'Show Daily Divider', group = 'Dividers')
+showh1 = input.bool(false, 'Show H1 on Daily Divider', group = 'Dividers')
+
+// ============================================================================
+// VARIABLES - FVG & OB
+// ============================================================================
+
+// Arrays to store boxes and their starting bar indices
+var array<box> ob_boxes = array.new_box()
+var array<int> ob_start_bars = array.new_int()
+var array<box> fvg_boxes = array.new_box()
+var array<int> fvg_start_bars = array.new_int()
+
+// Current candle information
+is_bullish = close > open
+is_bearish = close < open
+
+// ============================================================================
+// VARIABLES - MARKET STRUCTURE
+// ============================================================================
+var float lastHighPrice = na
+var int   lastHighIndex = na
+var float lastLowPrice  = na
+var int   lastLowIndex  = na
+var int   trend         = 0   // 1 = Bullish, -1 = Bearish, 0 = Neutral
+
+// ============================================================================
+// FUNCTIONS - FVG & OB
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Check common conditions for POI detection
+// Returns: [condition_met, is_strong_middle, tails_dont_touch]
+// ----------------------------------------------------------------------------
+check_common_condition() =>
+    // Calculate candle bodies and ranges
+    body_1st = math.abs(close[2] - open[2])
+    body_2nd = math.abs(close[1] - open[1])
+    body_3rd = math.abs(close - open)
+    range_1st = high[2] - low[2]
+    range_2nd = high[1] - low[1]
+    range_3rd = high - low
+
+    // Check strong middle candle condition based on selected version
+    strong_middle = false
+    if strong_candle_version == 'V1'
+        // V1 Original: 1st body + 3rd body <= 2nd body
+        original_condition = body_1st + body_3rd <= body_2nd
+        
+        // V1 Additional: Sum of N previous candles bodies <= middle body (optional)
+        // Example: if v1_candle_count = 4, then [2]+[3]+[4]+[5] <= [1]
+        if v1_use_additional
+            sum_bodies = 0.0
+            
+            // Sum bodies of N candles before middle candle [1]
+            for i = 2 to (1 + v1_candle_count) by 1
+                sum_bodies += math.abs(close[i] - open[i])
+            
+            additional_condition = sum_bodies <= body_2nd
+            
+            // Both conditions must be true
+            strong_middle := original_condition and additional_condition
+        else
+            // Only use original condition
+            strong_middle := original_condition
+        strong_middle
+    else if strong_candle_version == 'V2'
+        // V2: Either condition must be true
+        condition1 = range_1st + body_3rd <= body_2nd
+        condition2 = body_1st + range_3rd <= body_2nd
+        strong_middle := condition1 or condition2
+        strong_middle
+    // V3
+    else // V3: Sum of 1st and 3rd ranges <= 2nd range (most intuitive)
+        strong_middle := range_1st + range_3rd <= range_2nd
+        strong_middle
+
+    // Check if 1st and 3rd candle wicks don't touch
+    tails_dont_touch = false
+    if is_bullish[1] // If middle candle is bullish
+        // Compare 1st candle's high with 3rd candle's low
+        tails_dont_touch := high[2] < low
+        tails_dont_touch
+    else if is_bearish[1] // If middle candle is bearish
+        // Compare 1st candle's low with 3rd candle's high
+        tails_dont_touch := low[2] > high
+        tails_dont_touch
+
+    [strong_middle and tails_dont_touch, strong_middle, tails_dont_touch]
+
+// ----------------------------------------------------------------------------
+// Check Order Block conditions
+// Returns: [is_ob, ob_high, ob_low, is_bullish_ob]
+// ----------------------------------------------------------------------------
+check_ob_condition() =>
+    [common, strong, tails] = check_common_condition()
+
+    if not common
+        [false, 0.0, 0.0, false]
+    // Check for exact patterns
+    else // Bullish OB
+        bullish_ob_1 = is_bullish[2] and is_bullish[1] and is_bearish
+        bullish_ob_2 = is_bearish[2] and is_bullish[1] and is_bullish
+
+        // Bearish OB
+        bearish_ob_1 = is_bearish[2] and is_bearish[1] and is_bullish
+        bearish_ob_2 = is_bullish[2] and is_bearish[1] and is_bearish
+
+        is_bullish_ob = bullish_ob_1 or bullish_ob_2
+        is_bearish_ob = bearish_ob_1 or bearish_ob_2
+        is_ob = is_bullish_ob or is_bearish_ob
+
+        if is_ob
+            // OB zone is the full range of the first candle
+            ob_high = high[2]
+            ob_low = low[2]
+            [true, ob_high, ob_low, is_bullish_ob]
+        else
+            [false, 0.0, 0.0, false]
+
+// ----------------------------------------------------------------------------
+// Check Fair Value Gap conditions
+// Returns: [is_fvg, fvg_top, fvg_bottom, is_bullish_fvg]
+// ----------------------------------------------------------------------------
+check_fvg_condition() =>
+    [common, strong, tails] = check_common_condition()
+
+    if not common
+        [false, 0.0, 0.0, false]
+    else // Check if all three candles have the same color
+        all_bullish = is_bullish[2] and is_bullish[1] and is_bullish
+        all_bearish = is_bearish[2] and is_bearish[1] and is_bearish
+
+        if all_bullish
+            // Bullish FVG: gap between 1st candle's high and 3rd candle's low
+            gap_bottom = high[2]
+            gap_top = low
+            has_gap = gap_top > gap_bottom
+            [has_gap, gap_top, gap_bottom, true]
+        else if all_bearish
+            // Bearish FVG: gap between 1st candle's low and 3rd candle's high
+            gap_top = low[2]
+            gap_bottom = high
+            has_gap = gap_bottom < gap_top
+            [has_gap, gap_top, gap_bottom, false]
+        else
+            [false, 0.0, 0.0, false]
+
+// ----------------------------------------------------------------------------
+// Check if current candle touches the box
+// ----------------------------------------------------------------------------
+box_touched(box_top, box_bottom) =>
+    not(low > box_top or high < box_bottom)
+
+// ============================================================================
+// FUNCTIONS - MARKET STRUCTURE
+// ============================================================================
+
+confirmBearish() =>
+    float lastBearClose = na
+    int renewCount = 0
+    // Process from the bar immediately after pivot to the most recent bar
+    for i = 0 to rightBars - 1
+        int j = rightBars - 1 - i
+        if close[j] < open[j]
+            if na(lastBearClose)
+                renewCount := 1
+                lastBearClose := close[j]
+            else if close[j] < lastBearClose
+                renewCount += 1
+                lastBearClose := close[j]
+    
+    int consecutiveBears = 0
+    int maxConsecutive = 0
+    for i = 1 to rightBars
+        if close[i] < open[i]
+            consecutiveBears += 1
+            maxConsecutive := math.max(maxConsecutive, consecutiveBears)
+        else
+            consecutiveBears := 0
+    
+    renewCount >= 3 or maxConsecutive >= 3
+
+confirmBullish() =>
+    float lastBullClose = na
+    int renewCount = 0
+    for i = 0 to rightBars - 1
+        int j = rightBars - 1 - i
+        if close[j] > open[j]
+            if na(lastBullClose)
+                renewCount := 1
+                lastBullClose := close[j]
+            else if close[j] > lastBullClose
+                renewCount += 1
+                lastBullClose := close[j]
+    
+    int consecutiveBulls = 0
+    int maxConsecutive = 0
+    for i = 1 to rightBars
+        if close[i] > open[i]
+            consecutiveBulls += 1
+            maxConsecutive := math.max(maxConsecutive, consecutiveBulls)
+        else
+            consecutiveBulls := 0
+    
+    renewCount >= 3 or maxConsecutive >= 3
+
+confirmBearishV2() => confirmBearish()
+confirmBullishV2() => confirmBullish()
+
+// ============================================================================
+// MAIN LOGIC - FVG & OB
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Update existing Order Block boxes
+// ----------------------------------------------------------------------------
+if array.size(ob_boxes) > 0
+    for i = array.size(ob_boxes) - 1 to 0 by 1
+        b = array.get(ob_boxes, i)
+        start_bar = array.get(ob_start_bars, i)
+
+        if not na(b)
+            box_top = box.get_top(b)
+            box_bottom = box.get_bottom(b)
+            box_right = box.get_right(b)
+
+            bars_extended = bar_index - start_bar
+
+            if bars_extended >= max_bars_extend
+                // Stop extending after max bars (remove from active array)
+                array.remove(ob_boxes, i)
+                array.remove(ob_start_bars, i)
+            else if box_right == bar_index and box_touched(box_top, box_bottom)
+                // Stop extending when price touches the box
+                array.remove(ob_boxes, i)
+                array.remove(ob_start_bars, i)
+            else if box_right == bar_index
+                // Continue extending if not touched
+                box.set_right(b, bar_index + 1)
+
+// ----------------------------------------------------------------------------
+// Update existing Fair Value Gap boxes
+// ----------------------------------------------------------------------------
+if array.size(fvg_boxes) > 0
+    for i = array.size(fvg_boxes) - 1 to 0 by 1
+        b = array.get(fvg_boxes, i)
+        start_bar = array.get(fvg_start_bars, i)
+
+        if not na(b)
+            box_top = box.get_top(b)
+            box_bottom = box.get_bottom(b)
+            box_right = box.get_right(b)
+
+            bars_extended = bar_index - start_bar
+
+            if bars_extended >= max_bars_extend
+                array.remove(fvg_boxes, i)
+                array.remove(fvg_start_bars, i)
+            else if box_right == bar_index and box_touched(box_top, box_bottom)
+                array.remove(fvg_boxes, i)
+                array.remove(fvg_start_bars, i)
+            else if box_right == bar_index
+                box.set_right(b, bar_index + 1)
+
+// ----------------------------------------------------------------------------
+// Detect and create new Order Block boxes
+// ----------------------------------------------------------------------------
+[is_ob, ob_high, ob_low, is_bull_ob] = check_ob_condition()
+if is_ob and show_ob
+    // Create borderless white box
+    b = box.new(bar_index[2], ob_high, bar_index + 1, ob_low, border_color = color.new(color.white, 100), bgcolor = color.new(color.white, 90), border_width = 0)
+    array.push(ob_boxes, b)
+    array.push(ob_start_bars, bar_index)
+
+// ----------------------------------------------------------------------------
+// Detect and create new Fair Value Gap boxes
+// ----------------------------------------------------------------------------
+[is_fvg, fvg_top, fvg_bottom, is_bull_fvg] = check_fvg_condition()
+if is_fvg and show_fvg
+    // Create borderless yellow box
+    b = box.new(bar_index[2], fvg_top, bar_index + 1, fvg_bottom, border_color = color.new(color.yellow, 100), bgcolor = color.new(color.yellow, 90), border_width = 0)
+    array.push(fvg_boxes, b)
+    array.push(fvg_start_bars, bar_index)
+
+// ============================================================================
+// MAIN LOGIC - MARKET STRUCTURE
+// ============================================================================
+
+// Detect pivot highs and lows
+ph = ta.pivothigh(high, leftBars, rightBars)
+pl = ta.pivotlow(low, leftBars, rightBars)
+
+bool isValidHigh = versionSelect == 'V1' ? (not na(ph) and confirmBearish()) : (not na(ph) and confirmBearishV2())
+bool isValidLow  = versionSelect == 'V1' ? (not na(pl) and confirmBullish()) : (not na(pl) and confirmBullishV2())
+
+if isValidHigh
+    lastHighPrice := ph
+    lastHighIndex := bar_index - rightBars
+
+if isValidLow
+    lastLowPrice := pl
+    lastLowIndex := bar_index - rightBars
+
+// ============================================================================
+// STRUCTURE BREAK DETECTION (BOS / CHOCH)
+// ============================================================================
+colWhite = color.white
+
+if versionSelect == 'V1'
+    if not na(lastHighPrice) and ta.crossover(close, lastHighPrice)
+        string label_text = (trend == -1 or trend == 0) ? 'CHoCH' : 'BOS'
+        trend := 1
+        if showLines
+            line.new(lastHighIndex, lastHighPrice, bar_index, lastHighPrice, color = color.new(colWhite, 50), width = 1)
+            int midX = int(math.avg(lastHighIndex, bar_index))
+            label.new(midX, lastHighPrice, text = label_text, style = label.style_label_down, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
+        lastHighPrice := na
+
+    else if not na(lastLowPrice) and ta.crossunder(close, lastLowPrice)
+        string label_text = (trend == 1 or trend == 0) ? 'CHoCH' : 'BOS'
+        trend := -1
+        if showLines
+            line.new(lastLowIndex, lastLowPrice, bar_index, lastLowPrice, color = color.new(colWhite, 50), width = 1)
+            int midX = int(math.avg(lastLowIndex, bar_index))
+            label.new(midX, lastLowPrice, text = label_text, style = label.style_label_up, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
+        lastLowPrice := na
+
+else if versionSelect == 'V2'
+    if not na(lastHighPrice) and ta.crossover(close, lastHighPrice)
+        string label_text = (trend == -1 or trend == 0) ? 'CHoCH' : 'BOS'
+        trend := 1
+        
+        float minLow = low
+        int minIdx = bar_index
+        for i = 0 to (bar_index - lastHighIndex - 1)
+            if low[i] < minLow
+                minLow := low[i]
+                minIdx := bar_index[i]
+        
+        lastLowPrice := minLow
+        lastLowIndex := minIdx
+        
+        if showLines
+            line.new(lastHighIndex, lastHighPrice, bar_index, lastHighPrice, color = color.new(colWhite, 50), width = 1)
+            int midX = int(math.avg(lastHighIndex, bar_index))
+            label.new(midX, lastHighPrice, text = label_text, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny, style = label.style_label_down)
+        
+        lastHighPrice := na
+
+    else if not na(lastLowPrice) and ta.crossunder(close, lastLowPrice)
+        string label_text = (trend == 1 or trend == 0) ? 'CHoCH' : 'BOS'
+        trend := -1
+        
+        float maxHigh = high
+        int maxIdx = bar_index
+        for i = 0 to (bar_index - lastLowIndex - 1)
+            if high[i] > maxHigh
+                maxHigh := high[i]
+                maxIdx := bar_index[i]
+        
+        lastHighPrice := maxHigh
+        lastHighIndex := maxIdx
+
+        if showLines
+            line.new(lastLowIndex, lastLowPrice, bar_index, lastLowPrice, color = color.new(colWhite, 50), width = 1)
+            int midX = int(math.avg(lastLowIndex, bar_index))
+            label.new(midX, lastLowPrice, text = label_text, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny, style = label.style_label_up)
+        
+        lastLowPrice := na
+
+// ============================================================================
+// VISUALIZATION - MARKET STRUCTURE
+// ============================================================================
+
+// plot(showSwings and isValidHigh ? ph : na, 'Swing High', color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+// plot(showSwings and isValidLow ? pl : na, 'Swing Low', color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+if showSwings and isValidHigh
+    label.new(
+        x         = bar_index - rightBars,
+        y         = ph,
+        text      = "◈",
+        xloc      = xloc.bar_index,
+        yloc      = yloc.price,
+        style     = label.style_label_down,
+        color     = color(na),                
+        textcolor = color.new(colWhite, 50),    
+        size      = size.tiny,                  
+        tooltip   = "Swing High"
+    )
+
+if showSwings and isValidLow
+    label.new(
+        x         = bar_index - rightBars,
+        y         = pl,
+        text      = "◈",
+        xloc      = xloc.bar_index,
+        yloc      = yloc.price,
+        style     = label.style_label_up,
+        color     = color(na),
+        textcolor = color.new(colWhite, 50),
+        size      = size.tiny,
+        tooltip   = "Swing Low"
+    )
+
+trendColor = trend == 1 ? color.new(color.green, 90) : trend == -1 ? color.new(color.red, 90) : na
+
+bgcolor(showTrendMode == 'Background' ? trendColor : na, title = 'Trend Background')
+
+plotshape(showTrendMode == 'Shape' and trend == 1, title = "Bullish Trend Shape", location = location.bottom, color = trendColor, style = shape.square, size = size.tiny)
+plotshape(showTrendMode == 'Shape' and trend == -1, title = "Bearish Trend Shape", location = location.bottom, color = trendColor, style = shape.square, size = size.tiny)
+
+// ============================================================================
+// MAIN LOGIC - DIVIDERS
+// ============================================================================
+
+showWeeklyTimeframe = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 240
+showDailyTimeframeFalse = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier < 60
+showDailyTimeframeTrue = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 60
+showDailyTimeframe = showh1 ? showDailyTimeframeTrue : showDailyTimeframeFalse
+
+is_new_week = dayofweek == dayofweek.sunday and dayofweek[1] != dayofweek.sunday
+is_new_day  = dayofmonth != dayofmonth[1]
+
+if showWeeklyDiver and is_new_week and showWeeklyTimeframe
+    line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 70), extend = extend.both, style = line.style_dashed)
+
+if showDailyDiver and is_new_day and showDailyTimeframe
+    line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dashed)
