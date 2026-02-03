@@ -1,0 +1,119 @@
+//@version=6
+indicator('PDH/PDL + Daily Change %', overlay = true, max_lines_count = 500, max_labels_count = 500)
+
+isUnder1H = timeframe.in_seconds() < 3600
+
+prevDayHigh = request.security(syminfo.tickerid, 'D', high, lookahead = barmerge.lookahead_off)
+prevDayLow = request.security(syminfo.tickerid, 'D', low, lookahead = barmerge.lookahead_off)
+todayOpen = request.security(syminfo.tickerid, 'D', open, lookahead = barmerge.lookahead_on)
+
+var float prevHigh = na
+var float prevLow = na
+var line highLine = na
+var line lowLine = na
+var label highLabel = na
+var label lowLabel = na
+var label changeLabel = na
+var bool highTouched = false
+var bool lowTouched = false
+var int highTouchBar = na
+var int lowTouchBar = na
+var int dayStartBar = na
+
+newDay = ta.change(time('D'))
+
+if bool(newDay) and isUnder1H
+    prevHigh := prevDayHigh[1]
+    prevLow := prevDayLow[1]
+    highTouched := false
+    lowTouched := false
+    highTouchBar := na
+    lowTouchBar := na
+    dayStartBar := bar_index
+
+    if not na(highLine)
+        line.delete(highLine)
+    if not na(lowLine)
+        line.delete(lowLine)
+    if not na(highLabel)
+        label.delete(highLabel)
+    if not na(lowLabel)
+        label.delete(lowLabel)
+
+    if not na(prevHigh)
+        highLine := line.new(x1 = bar_index, y1 = prevHigh, x2 = bar_index + 1, y2 = prevHigh, color = color.new(color.white, 50))
+        highLine
+    if not na(prevLow)
+        lowLine := line.new(x1 = bar_index, y1 = prevLow, x2 = bar_index + 1, y2 = prevLow, color = color.new(color.white, 50))
+        lowLine
+
+if isUnder1H
+    if not na(highLine) and not highTouched
+        line.set_x2(highLine, bar_index)
+        line.set_y1(highLine, prevHigh)
+        line.set_y2(highLine, prevHigh)
+
+    if not na(lowLine) and not lowTouched
+        line.set_x2(lowLine, bar_index)
+        line.set_y1(lowLine, prevLow)
+        line.set_y2(lowLine, prevLow)
+
+    if not na(prevHigh) and not highTouched
+        if high >= prevHigh
+            highTouched := true
+            highTouchBar := bar_index
+            highTouchBar
+
+    if not na(prevLow) and not lowTouched
+        if low <= prevLow
+            lowTouched := true
+            lowTouchBar := bar_index
+            lowTouchBar
+
+    if barstate.islast
+        if not na(highLabel)
+            label.delete(highLabel)
+        if not na(lowLabel)
+            label.delete(lowLabel)
+
+        if not na(prevHigh)
+            highLabelX = highTouched ? dayStartBar : bar_index
+            highLabelStyle = highTouched ? label.style_label_lower_right : label.style_label_left
+            highLabel := label.new(x = highLabelX, y = prevHigh, text = 'PDH', style = highLabelStyle, color = color.new(color.white, 100), textcolor = color.rgb(255, 255, 255, 50), size = size.small)
+            highLabel
+
+        if not na(prevLow)
+            lowLabelX = lowTouched ? dayStartBar : bar_index
+            lowLabelStyle = lowTouched ? label.style_label_upper_right : label.style_label_left
+            lowLabel := label.new(x = lowLabelX, y = prevLow, text = 'PDL', style = lowLabelStyle, color = color.new(color.white, 100), textcolor = color.rgb(255, 255, 255, 50), size = size.small)
+            lowLabel
+
+if not isUnder1H
+    if not na(highLine)
+        line.delete(highLine)
+        highLine := na
+        highLine
+    if not na(lowLine)
+        line.delete(lowLine)
+        lowLine := na
+        lowLine
+    if not na(highLabel)
+        label.delete(highLabel)
+        highLabel := na
+        highLabel
+    if not na(lowLabel)
+        label.delete(lowLabel)
+        lowLabel := na
+        lowLabel
+
+currentPrice = close
+changePercent = (currentPrice - todayOpen) / todayOpen * 100
+
+if barstate.islast
+    if not na(changeLabel)
+        label.delete(changeLabel)
+
+    labelTextColor = changePercent >= 0 ? color.green : color.red
+    labelText = str.tostring(changePercent, '#.##') + '%'
+    changeLabel := label.new(x = bar_index, y = close, text = labelText, style = label.style_label_left, color = color.new(color.white, 100), textcolor = labelTextColor, size = size.normal)
+    changeLabel
