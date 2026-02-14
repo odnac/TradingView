@@ -1,31 +1,29 @@
 //@version=6
 indicator('Market Structure [odnac]', overlay = true, max_lines_count = 500, max_labels_count = 500)
-
 // ============================================================================
-// INPUT SETTINGS
+// Market Structure
 // ============================================================================
 versionSelect = input.string('V2', 'Version', options = ['V1', 'V2'], 
-     tooltip = 'V1: Use only pivot-detected swings | V2: Auto-update swing points between breaks')
-leftBars      = input.int(36, 'Swing Left Bars', minval = 1, 
-     tooltip = 'Number of bars to the left to detect a pivot')
+     tooltip = 'V1: Use only pivot-detected swings | V2: Auto-update swing points between breaks', group = "Market Structure")
+leftBars      = input.int(60, 'Swing Left Bars', minval = 1, 
+     tooltip = 'Number of bars to the left to detect a pivot', group = "Market Structure")
 rightBars     = input.int(7,  'Swing Right Bars', minval = 1, 
-     tooltip = 'Number of bars to the right to confirm a pivot')
+     tooltip = 'Number of bars to the right to confirm a pivot', group = "Market Structure")
 showSwings    = input.bool(true, 'Show Swing Points', 
-     tooltip = 'Toggle visibility of Swing High/Low circles')
+     tooltip = 'Toggle visibility of Swing High/Low circles', group = "Market Structure")
 showLines     = input.bool(true, 'Show BOS/CHoCH', 
-     tooltip = 'Toggle visibility of structure break lines and labels')
-showTrendMode = input.string('Background', 'Trend Visualization', 
+     tooltip = 'Toggle visibility of structure break lines and labels', group = "Market Structure")
+showTrendMode = input.string('None', 'Trend Visualization', 
      options = ['Background', 'Shape', 'None'], 
-     tooltip = 'Choose how to visualize the current market trend')
+     tooltip = 'Choose how to visualize the current market trend', group = "Market Structure")
+enableTimeframeFilter = input.bool(true, 'Enable Timeframe Filter (15m+)', 
+     tooltip = 'When enabled, Market Structure will only show on 15-minute timeframe or higher', group = "Market Structure")
 
-// ============================================================================
-// PIVOT CONFIRMATION LOGIC (Renewal based on previous candle of same type)
-// ============================================================================
+showMarketStructure = enableTimeframeFilter ? (timeframe.isintraday and timeframe.multiplier >= 15) or not timeframe.isintraday : true
 
 confirmBearish() =>
     float lastBearClose = na
     int renewCount = 0
-    // Process from the bar immediately after pivot to the most recent bar
     for i = 0 to rightBars - 1
         int j = rightBars - 1 - i
         if close[j] < open[j]
@@ -74,13 +72,9 @@ confirmBullish() =>
 confirmBearishV2() => confirmBearish()
 confirmBullishV2() => confirmBullish()
 
-// Detect pivot highs and lows
 ph = ta.pivothigh(high, leftBars, rightBars)
 pl = ta.pivotlow(low, leftBars, rightBars)
 
-// ============================================================================
-// VARIABLE MANAGEMENT & TREND DETERMINATION
-// ============================================================================
 var float lastHighPrice = na
 var int   lastHighIndex = na
 var float lastLowPrice  = na
@@ -98,16 +92,14 @@ if isValidLow
     lastLowPrice := pl
     lastLowIndex := bar_index - rightBars
 
-// ============================================================================
 // STRUCTURE BREAK DETECTION (BOS / CHOCH)
-// ============================================================================
 colWhite = color.white
 
 if versionSelect == 'V1'
     if not na(lastHighPrice) and ta.crossover(close, lastHighPrice)
         string label_text = (trend == -1 or trend == 0) ? 'CHoCH' : 'BOS'
         trend := 1
-        if showLines
+        if showLines and showMarketStructure
             line.new(lastHighIndex, lastHighPrice, bar_index, lastHighPrice, color = color.new(colWhite, 50), width = 1)
             int midX = int(math.avg(lastHighIndex, bar_index))
             label.new(midX, lastHighPrice, text = label_text, style = label.style_label_down, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
@@ -116,7 +108,7 @@ if versionSelect == 'V1'
     else if not na(lastLowPrice) and ta.crossunder(close, lastLowPrice)
         string label_text = (trend == 1 or trend == 0) ? 'CHoCH' : 'BOS'
         trend := -1
-        if showLines
+        if showLines and showMarketStructure
             line.new(lastLowIndex, lastLowPrice, bar_index, lastLowPrice, color = color.new(colWhite, 50), width = 1)
             int midX = int(math.avg(lastLowIndex, bar_index))
             label.new(midX, lastLowPrice, text = label_text, style = label.style_label_up, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny)
@@ -137,7 +129,7 @@ else if versionSelect == 'V2'
         lastLowPrice := minLow
         lastLowIndex := minIdx
         
-        if showLines
+        if showLines and showMarketStructure
             line.new(lastHighIndex, lastHighPrice, bar_index, lastHighPrice, color = color.new(colWhite, 50), width = 1)
             int midX = int(math.avg(lastHighIndex, bar_index))
             label.new(midX, lastHighPrice, text = label_text, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny, style = label.style_label_down)
@@ -158,23 +150,47 @@ else if versionSelect == 'V2'
         lastHighPrice := maxHigh
         lastHighIndex := maxIdx
 
-        if showLines
+        if showLines and showMarketStructure
             line.new(lastLowIndex, lastLowPrice, bar_index, lastLowPrice, color = color.new(colWhite, 50), width = 1)
             int midX = int(math.avg(lastLowIndex, bar_index))
             label.new(midX, lastLowPrice, text = label_text, color = color.new(colWhite, 100), textcolor = colWhite, size = size.tiny, style = label.style_label_up)
         
         lastLowPrice := na
 
-// ============================================================================
 // VISUALIZATION
-// ============================================================================
+// plot(showSwings and isValidHigh ? ph : na, 'Swing High', color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+// plot(showSwings and isValidLow ? pl : na, 'Swing Low', color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+if showSwings and showMarketStructure and isValidHigh
+    label.new(
+        x         = bar_index - rightBars,
+        y         = ph,
+        text      = "◈",
+        xloc      = xloc.bar_index,
+        yloc      = yloc.abovebar,
+        style     = label.style_label_down,
+        color     = color(na),                
+        textcolor = color.new(colWhite, 50),    
+        size      = size.tiny,                  
+        tooltip   = "Swing High"
+    )
 
-plot(showSwings and isValidHigh ? ph : na, 'Swing High', color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
-plot(showSwings and isValidLow ? pl : na, 'Swing Low', color = color.new(colWhite, 70), style = plot.style_circles, linewidth = 4, offset = -rightBars)
+if showSwings and showMarketStructure and isValidLow
+    label.new(
+        x         = bar_index - rightBars,
+        y         = pl,
+        text      = "◈",
+        xloc      = xloc.bar_index,
+        yloc      = yloc.belowbar,
+        style     = label.style_label_up,
+        color     = color(na),
+        textcolor = color.new(colWhite, 50),
+        size      = size.tiny,
+        tooltip   = "Swing Low"
+    )
 
 trendColor = trend == 1 ? color.new(color.green, 90) : trend == -1 ? color.new(color.red, 90) : na
 
-bgcolor(showTrendMode == 'Background' ? trendColor : na, title = 'Trend Background')
+bgcolor(showTrendMode == 'Background' and showMarketStructure ? trendColor : na, title = 'Trend Background')
 
-plotshape(showTrendMode == 'Shape' and trend == 1, title = "Bullish Trend Shape", location = location.bottom, color = trendColor, style = shape.square, size = size.tiny)
-plotshape(showTrendMode == 'Shape' and trend == -1, title = "Bearish Trend Shape", location = location.bottom, color = trendColor, style = shape.square, size = size.tiny)
+plotshape(showTrendMode == 'Shape' and showMarketStructure and trend == 1, title = "Bullish Trend Shape", location = location.bottom, color = trendColor, style = shape.square, size = size.tiny)
+plotshape(showTrendMode == 'Shape' and showMarketStructure and trend == -1, title = "Bearish Trend Shape", location = location.bottom, color = trendColor, style = shape.square, size = size.tiny)
