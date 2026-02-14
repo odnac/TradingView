@@ -1,0 +1,134 @@
+//@version=5
+indicator("Trendlines - Williams Fractal", overlay=true, max_lines_count=500, max_labels_count=500)
+
+showLabels = input.bool(true, "show label")
+
+isFractalHigh = high[2] > high[4] and high[2] > high[3] and high[2] > high[1] and high[2] > high[0]
+isFractalLow = low[2] < low[4] and low[2] < low[3] and low[2] < low[1] and low[2] < low[0]
+
+var array<line> downLines = array.new<line>()
+var array<float> downSlopes = array.new<float>()
+var array<float> downY1s = array.new<float>()
+var array<int> downX1s = array.new<int>()
+
+var array<line> upLines = array.new<line>()
+var array<float> upSlopes = array.new<float>()
+var array<float> upY1s = array.new<float>()
+var array<int> upX1s = array.new<int>()
+
+var array<float> recentHighs = array.new<float>()
+var array<int> recentHighBars = array.new<int>()
+var array<float> recentLows = array.new<float>()
+var array<int> recentLowBars = array.new<int>()
+
+if isFractalHigh
+    array.unshift(recentHighs, high[2])
+    array.unshift(recentHighBars, bar_index - 2)
+    if array.size(recentHighs) > 10
+        array.pop(recentHighs)
+        array.pop(recentHighBars)
+
+if isFractalLow
+    array.unshift(recentLows, low[2])
+    array.unshift(recentLowBars, bar_index - 2)
+    if array.size(recentLows) > 10
+        array.pop(recentLows)
+        array.pop(recentLowBars)
+
+if isFractalHigh and array.size(recentHighs) >= 2
+    h1 = array.get(recentHighs, 0)
+    h2 = array.get(recentHighs, 1)
+    b1 = array.get(recentHighBars, 0)
+    b2 = array.get(recentHighBars, 1)
+    
+    if h1 < h2
+        if array.size(downLines) > 0
+            for i = 0 to array.size(downLines) - 1
+                line.delete(array.get(downLines, i))
+            array.clear(downLines)
+            array.clear(downSlopes)
+            array.clear(downY1s)
+            array.clear(downX1s)
+
+        slope = (h1 - h2) / (b1 - b2)
+        currentY = h1 + slope * (bar_index - b1)
+        newLine = line.new(x1=b2, y1=h2, x2=bar_index, y2=currentY, color=color.green)
+        
+        array.push(downLines, newLine)
+        array.push(downSlopes, slope)
+        array.push(downY1s, h1)
+        array.push(downX1s, b1)
+
+if isFractalLow and array.size(recentLows) >= 2
+    l1 = array.get(recentLows, 0)
+    l2 = array.get(recentLows, 1)
+    b1 = array.get(recentLowBars, 0)
+    b2 = array.get(recentLowBars, 1)
+    
+    if l1 > l2
+        if array.size(upLines) > 0
+            for i = 0 to array.size(upLines) - 1
+                line.delete(array.get(upLines, i))
+            array.clear(upLines)
+            array.clear(upSlopes)
+            array.clear(upY1s)
+            array.clear(upX1s)
+
+        slope = (l1 - l2) / (b1 - b2)
+        currentY = l1 + slope * (bar_index - b1)
+        newLine = line.new(x1=b2, y1=l2, x2=bar_index, y2=currentY, color=color.red)
+        
+        array.push(upLines, newLine)
+        array.push(upSlopes, slope)
+        array.push(upY1s, l1)
+        array.push(upX1s, b1)
+
+if array.size(downLines) > 0
+    for i = array.size(downLines) - 1 to 0
+        slope = array.get(downSlopes, i)
+        y1 = array.get(downY1s, i)
+        x1 = array.get(downX1s, i)
+        theLine = array.get(downLines, i)
+        
+        currentY = y1 + slope * (bar_index - x1)
+        prevY = y1 + slope * (bar_index - 1 - x1)
+        
+        if close > currentY and close[1] <= prevY
+            line.set_x2(theLine, bar_index)
+            line.set_y2(theLine, currentY)
+            
+            if showLabels
+                label.new(x=bar_index, y=low, text="◈", xloc=xloc.bar_index, yloc=yloc.belowbar, style=label.style_label_up, color=color.new(color.white, 100), textcolor=color.new(color.green, 30), size=size.small, tooltip="Trendline Breakout (Long)")
+            
+            array.remove(downLines, i)
+            array.remove(downSlopes, i)
+            array.remove(downY1s, i)
+            array.remove(downX1s, i)
+        else
+            line.set_x2(theLine, bar_index)
+            line.set_y2(theLine, currentY)
+
+if array.size(upLines) > 0
+    for i = array.size(upLines) - 1 to 0
+        slope = array.get(upSlopes, i)
+        y1 = array.get(upY1s, i)
+        x1 = array.get(upX1s, i)
+        theLine = array.get(upLines, i)
+        
+        currentY = y1 + slope * (bar_index - x1)
+        prevY = y1 + slope * (bar_index - 1 - x1)
+        
+        if close < currentY and close[1] >= prevY
+            line.set_x2(theLine, bar_index)
+            line.set_y2(theLine, currentY)
+            
+            if showLabels
+                label.new(x=bar_index, y=high, text="◈", xloc=xloc.bar_index, yloc=yloc.abovebar, style=label.style_label_down, color=color.new(color.white, 100), textcolor=color.new(color.red, 30), size=size.small, tooltip="Trendline Breakdown (Short)")
+            
+            array.remove(upLines, i)
+            array.remove(upSlopes, i)
+            array.remove(upY1s, i)
+            array.remove(upX1s, i)
+        else
+            line.set_x2(theLine, bar_index)
+            line.set_y2(theLine, currentY)
