@@ -1,0 +1,81 @@
+//@version=6
+indicator("CRT", overlay = true)
+
+// ============================================================================
+// CRT (Candle Range Theory)
+// ============================================================================
+grp_crt = 'CRT Settings'
+showCRT = input.bool(false, 'Show CRT Signals', group = grp_crt)
+
+// Current and previous candle direction
+current_bullish = close > open
+prev_bullish = close[1] > open[1]
+
+// 1. Sweep detection
+low_sweep = low < low[1]
+high_sweep = high > high[1]
+
+// 2. Previous candle body must be larger than wicks
+prev_body = math.abs(close[1] - open[1])
+prev_upper_wick = high[1] - math.max(close[1], open[1])
+prev_lower_wick = math.min(close[1], open[1]) - low[1]
+prev_total_wick = prev_upper_wick + prev_lower_wick
+body_larger_than_wicks = prev_body > prev_total_wick
+
+// 3. Current candle body must be smaller than wicks
+current_body = math.abs(close - open)
+current_upper_wick = high - math.max(close, open)
+current_lower_wick = math.min(close, open) - low
+current_total_wick = current_upper_wick + current_lower_wick
+current_body_smaller_than_wicks = current_body < current_total_wick
+
+// 4. Current close must be within previous candle range
+close_in_prev_range = close >= low[1] and close <= high[1]
+
+// 5. Midpoint no touch - current candle must not touch previous candle's midpoint
+prev_midpoint = (high[1] + low[1]) / 2
+not_touch_midpoint = high < prev_midpoint or low > prev_midpoint
+
+// Long: prev bearish + current bullish + conditions
+long_crt = not prev_bullish 
+     and current_bullish 
+     and low_sweep 
+     and body_larger_than_wicks 
+     and current_body_smaller_than_wicks 
+     and close_in_prev_range 
+     // and not_touch_midpoint
+
+// Short: prev bullish + current bearish + conditions
+short_crt = prev_bullish 
+     and not current_bullish 
+     and high_sweep 
+     and body_larger_than_wicks 
+     and current_body_smaller_than_wicks
+     and close_in_prev_range 
+     // and not_touch_midpoint
+
+if showCRT and long_crt
+    label.new(
+         x         = bar_index,
+         y         = low,
+         text      = "◈",
+         xloc      = xloc.bar_index,
+         yloc      = yloc.belowbar,
+         style     = label.style_label_up,
+         color     = color(na),
+         textcolor = color.new(color.green, 30),
+         size      = size.small,
+         tooltip   = "CRT")
+
+if showCRT and short_crt
+    label.new(
+         x         = bar_index,
+         y         = high,
+         text      = "◈",
+         xloc      = xloc.bar_index,
+         yloc      = yloc.abovebar,
+         style     = label.style_label_down,
+         color     = color(na),
+         textcolor = color.new(color.red, 30),
+         size      = size.small,
+         tooltip   = "CRT")
