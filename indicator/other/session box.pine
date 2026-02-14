@@ -1,47 +1,49 @@
 //@version=6
 indicator('Session Box [odnac]', overlay = true)
 
-input_auto_summer = input.bool(true, "Summer Time 자동 적용 여부")
+grp_sessions = 'Session Boxes'
+showAsia   = input.bool(true, 'Show Asia Session', group=grp_sessions)
+showLondon = input.bool(true, 'Show London Session', group=grp_sessions)
+showNY     = input.bool(true, 'Show NY Session', group=grp_sessions)
+showSessionsOnWeekend = input.bool(false, 'Show Sessions on Weekend', group=grp_sessions)
 
-is_summer_time() =>
-    m = month(time, 'UTC')
-    d = dayofmonth(time, 'UTC')
-    w = dayofweek(time, 'UTC')
+showSessionsInTimeframe = timeframe.isintraday and timeframe.multiplier <= 60
 
-    isAfterMarchSt = m > 3 or (m == 3 and d - w >= 8)
-    isBeforeNovSt = m < 11 or (m == 11 and d - w < 1)
-    isAfterMarchSt and isBeforeNovSt
+colorAsia   = color.new(#F48FB1, 90)
+colorLondon = color.new(#FFF59D, 90)
+colorNY     = color.new(#90CAF9, 90)
 
-autoSummer = input_auto_summer and is_summer_time()
+asiaSession   = '0900-1300'
+londonSession = '0800-1100'
+nySession     = '0830-1130'
 
-asiaTime = '0000-0400' 
-londonTime = autoSummer ? '0600-0900' : '0700-1000'
-nyTime = autoSummer ? '1200-1500' : '1300-1600'
+is_weekend = dayofweek == dayofweek.saturday or dayofweek == dayofweek.sunday
 
-colorAsia = input.color(color.new(#F48FB1, 90), 'Asia Color (Pink)')
-colorLondon = input.color(color.new(#FFF59D, 90), 'London Color (Yellow)')
-colorNY = input.color(color.new(#90CAF9, 90), 'NY Color (Navy)')
-
-var table statusTable = table.new(position.top_right, 1, 1)
-if barstate.islast
-    table.cell(statusTable, 0, 0, autoSummer ? 'DST Active (Summer)' : 'DST Inactive (Winter)', bgcolor = color.new(color.gray, 50), text_color = color.white, text_size = size.small)
-
-process_session(sessionTime, sessionColor) =>
+process_session(sessionTime, sessionColor, showToggle, sessionTimezone) =>
     var box sBox = na
-
-    t = time(timeframe.period, sessionTime, 'UTC')
+    
+    t = time(timeframe.period, sessionTime, sessionTimezone)
 
     is_new_session = not na(t) and na(t[1])
-    is_in_session = not na(t)
+    is_in_session  = not na(t)
 
-    if is_new_session
-        sBox := box.new(left = bar_index, top = high, right = bar_index, bottom = low, border_color = color.new(sessionColor, 100), bgcolor = sessionColor)
+    bool canShowSession = showToggle and showSessionsInTimeframe and (showSessionsOnWeekend or not is_weekend)
 
-    if is_in_session and not na(sBox)
-        box.set_right(sBox, bar_index + 1)
-        box.set_top(sBox, math.max(box.get_top(sBox), high))
-        box.set_bottom(sBox, math.min(box.get_bottom(sBox), low))
+    if canShowSession
+        if is_new_session
+            sBox := box.new(
+                left = bar_index,
+                top = high,
+                right = bar_index,
+                bottom = low,
+                border_color = color.new(sessionColor, 100),
+                bgcolor = sessionColor)
 
-process_session(asiaTime, colorAsia)
-process_session(londonTime, colorLondon)
-process_session(nyTime, colorNY)
+        if is_in_session and not na(sBox)
+            box.set_right(sBox, bar_index + 1)
+            box.set_top(sBox, math.max(box.get_top(sBox), high))
+            box.set_bottom(sBox, math.min(box.get_bottom(sBox), low))
+
+process_session(asiaSession,   colorAsia,   showAsia,   "Asia/Tokyo")
+process_session(londonSession, colorLondon, showLondon, "Europe/London")
+process_session(nySession,     colorNY,     showNY,     "America/New_York")
