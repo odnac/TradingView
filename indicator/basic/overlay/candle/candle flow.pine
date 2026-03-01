@@ -1,0 +1,55 @@
+//@version=6
+indicator('Candle flow [odnac]', overlay = false)
+
+// Signal & Trend
+showSignal = input.bool(true, 'show bg signal', group = 'Settings')
+
+isInside = high <= high[1] and low >= low[1]
+
+var float refHigh = na
+var float refLow = na
+var bool insideMode = false
+var int lastDirectionalTrend = 0
+
+if bar_index == 1
+    refHigh := high[1]
+    refLow := low[1]
+
+if isInside
+    if not insideMode
+        refHigh := high[1]
+        refLow := low[1]
+        insideMode := true
+else
+    if not insideMode
+        refHigh := high[1]
+        refLow := low[1]
+
+longSignal  = high > refHigh
+shortSignal = low < refLow
+bothSweep   = longSignal and shortSignal
+
+if longSignal and not bothSweep
+    lastDirectionalTrend := 1
+if shortSignal and not bothSweep
+    lastDirectionalTrend := -1
+if longSignal or shortSignal
+    insideMode := false
+
+color bullColor    = #089981
+color bearColor    = #f23645
+color bothColor    = color.white
+color neutralColor = color.new(color.gray, 60)
+
+candleColor = bothSweep ? bothColor : longSignal ? bullColor : shortSignal ? bearColor : neutralColor
+
+plotcandle(open, high, low, close,
+     color       = candleColor,
+     wickcolor   = candleColor,
+     bordercolor = candleColor,
+     display     = display.all - display.status_line)
+
+prevDir = lastDirectionalTrend[1]
+trueReversal = (prevDir == 1 and lastDirectionalTrend == -1) or (prevDir == -1 and lastDirectionalTrend == 1)
+bgColor = trueReversal and lastDirectionalTrend == 1 ? color.new(bullColor, 90) : trueReversal and lastDirectionalTrend == -1 ? color.new(bearColor, 90) : na
+bgcolor(showSignal ? bgColor : na)
