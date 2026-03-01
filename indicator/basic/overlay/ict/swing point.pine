@@ -1,0 +1,96 @@
+//@version=6
+indicator('Swing High/Low [odnac]', overlay = true, max_labels_count = 500)
+
+// INPUT PARAMETERS
+leftBars  = input.int(60, 'Swing Left Bars',  minval = 1, tooltip = 'Number of bars to the left to detect a pivot')
+rightBars = input.int(7,  'Swing Right Bars', minval = 1, tooltip = 'Number of bars to the right to confirm a pivot')
+
+
+// CONFIRMATION FUNCTIONS
+confirmBearish() =>
+    float lastBearClose = na
+    int renewCount = 0
+    for i = 0 to rightBars - 1
+        int j = rightBars - 1 - i
+        if close[j] < open[j]
+            if na(lastBearClose)
+                renewCount := 1
+                lastBearClose := close[j]
+            else if close[j] < lastBearClose
+                renewCount += 1
+                lastBearClose := close[j]
+    
+    int consecutiveBears = 0
+    int maxConsecutive = 0
+    for i = 1 to rightBars
+        if close[i] < open[i]
+            consecutiveBears += 1
+            maxConsecutive := math.max(maxConsecutive, consecutiveBears)
+        else
+            consecutiveBears := 0
+    
+    renewCount >= 3 or maxConsecutive >= 3
+
+confirmBullish() =>
+    float lastBullClose = na
+    int renewCount = 0
+    for i = 0 to rightBars - 1
+        int j = rightBars - 1 - i
+        if close[j] > open[j]
+            if na(lastBullClose)
+                renewCount := 1
+                lastBullClose := close[j]
+            else if close[j] > lastBullClose
+                renewCount += 1
+                lastBullClose := close[j]
+    
+    int consecutiveBulls = 0
+    int maxConsecutive = 0
+    for i = 1 to rightBars
+        if close[i] > open[i]
+            consecutiveBulls += 1
+            maxConsecutive := math.max(maxConsecutive, consecutiveBulls)
+        else
+            consecutiveBulls := 0
+    
+    renewCount >= 3 or maxConsecutive >= 3
+
+
+// PIVOT DETECTION
+ph = ta.pivothigh(high, leftBars, rightBars)
+pl = ta.pivotlow(low,  leftBars, rightBars)
+
+isValidHigh = not na(ph) and confirmBearish()
+isValidLow  = not na(pl) and confirmBullish()
+
+
+// VISUALIZATION
+colWhite = color.white
+
+if isValidHigh
+    label.new(
+         x         = bar_index - rightBars,
+         y         = ph,
+         text      = "◈",
+         xloc      = xloc.bar_index,
+         yloc      = yloc.abovebar,
+         style     = label.style_label_down,
+         color     = color(na),
+         textcolor = color.new(colWhite, 50),
+         size      = size.tiny,
+         tooltip   = "Swing High"
+     )
+
+if isValidLow
+    label.new(
+         x         = bar_index - rightBars,
+         y         = pl,
+         text      = "◈",
+         xloc      = xloc.bar_index,
+         yloc      = yloc.belowbar,
+         style     = label.style_label_up,
+         color     = color(na),
+         textcolor = color.new(colWhite, 50),
+         size      = size.tiny,
+         tooltip   = "Swing Low"
+     )

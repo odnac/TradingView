@@ -1,5 +1,5 @@
 //@version=5
-indicator("Table", overlay=true)
+indicator("check list", overlay=true)
 
 var table t = table.new(position.top_right, 2, 4, border_width = 1, border_color = color.gray)
 

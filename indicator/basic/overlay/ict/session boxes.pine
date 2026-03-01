@@ -1,5 +1,5 @@
 //@version=6
-indicator('Session Box [odnac]', overlay = true)
+indicator("sessions boxes", overlay = true, max_lines_count = 500, max_labels_count = 500, max_bars_back=5000)
 
 grp_sessions = 'Session Boxes'
 showAsia   = input.bool(true, 'Show Asia Session', group=grp_sessions)
@@ -7,11 +7,11 @@ showLondon = input.bool(true, 'Show London Session', group=grp_sessions)
 showNY     = input.bool(true, 'Show NY Session', group=grp_sessions)
 showSessionsOnWeekend = input.bool(false, 'Show Sessions on Weekend', group=grp_sessions)
 
-showSessionsInTimeframe = timeframe.isintraday and timeframe.multiplier <= 60
+showSessionsInTimeframe = timeframe.isintraday and timeframe.multiplier < 60
 
-colorAsia   = color.new(#F48FB1, 90)
-colorLondon = color.new(#FFF59D, 90)
-colorNY     = color.new(#90CAF9, 90)
+colorAsia   = color.new(#F48FB1, 92)
+colorLondon = color.new(#FFF59D, 92)
+colorNY     = color.new(#90CAF9, 92)
 
 asiaSession   = '0900-1300'
 londonSession = '0800-1100'
@@ -32,12 +32,12 @@ process_session(sessionTime, sessionColor, showToggle, sessionTimezone) =>
     if canShowSession
         if is_new_session
             sBox := box.new(
-                left = bar_index,
-                top = high,
-                right = bar_index,
-                bottom = low,
-                border_color = color.new(sessionColor, 100),
-                bgcolor = sessionColor)
+                 left = bar_index,
+                 top = high,
+                 right = bar_index,
+                 bottom = low,
+                 border_color = color.new(sessionColor, 100),
+                 bgcolor = sessionColor)
 
         if is_in_session and not na(sBox)
             box.set_right(sBox, bar_index + 1)

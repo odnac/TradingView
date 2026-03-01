@@ -1,0 +1,84 @@
+//@version=6
+indicator('FVG & OB [odnac]', overlay = true, max_boxes_count = 500)
+
+// INPUT PARAMETERS
+show_fvg = input.bool(true, 'Show Fair Value Gaps', group = 'Display')
+show_ob  = input.bool(true, 'Show Order Blocks (Opposite Color)', group = 'Display')
+max_bars_extend = input.int(100, 'Maximum Bars to Extend', minval = 10, maxval = 500, group = 'Conditions')
+
+color_bull = color.new(#089981, 80)
+color_bear = color.new(#f23645, 80)
+
+// VARIABLES
+var array<box> fvg_boxes = array.new_box()
+var array<int> fvg_start_bars = array.new_int()
+
+// FUNCTIONS
+check_fvg_condition() =>
+    float gap_top = 0.0
+    float gap_bottom = 0.0
+    bool is_bull_fvg = false
+    bool is_bear_fvg = false
+    
+    bool candle1_bull = close[2] > open[2]
+    bool candle3_bull = close > open
+    bool same_color = candle1_bull == candle3_bull
+
+    if high[2] < low
+        gap_top := low
+        gap_bottom := high[2]
+        is_bull_fvg := true
+
+    else if low[2] > high
+        gap_top := low[2]
+        gap_bottom := high
+        is_bear_fvg := true
+
+    [is_bull_fvg or is_bear_fvg, gap_top, gap_bottom, is_bull_fvg, same_color]
+
+box_touched(box_top, box_bottom) =>
+    not(low > box_top or high < box_bottom)
+
+// MAIN LOGIC
+if array.size(fvg_boxes) > 0
+    for i = array.size(fvg_boxes) - 1 to 0 by 1
+        b = array.get(fvg_boxes, i)
+        start_bar = array.get(fvg_start_bars, i)
+        
+        if not na(b)
+            box_top = box.get_top(b)
+            box_bottom = box.get_bottom(b)
+            box_right = box.get_right(b)
+            
+            if (bar_index - start_bar) >= max_bars_extend or (box_right == bar_index and box_touched(box_top, box_bottom))
+                array.remove(fvg_boxes, i)
+                array.remove(fvg_start_bars, i)
+            else if box_right == bar_index
+                box.set_right(b, bar_index + 1)
+
+// FVG / OB
+[is_fvg, fvg_top, fvg_bottom, is_bull, same_color] = check_fvg_condition()
+
+if is_fvg
+    box_top = 0.0
+    box_bottom = 0.0
+    box_color = is_bull ? color_bull : color_bear
+    should_draw = false
+
+    if same_color and show_fvg
+        box_top := fvg_top
+        box_bottom := fvg_bottom
+        should_draw := true
+        
+    else if not same_color and show_ob
+        box_top := high[2]
+        box_bottom := low[2]
+        should_draw := true
+
+    if should_draw
+        b = box.new(bar_index[2], box_top, bar_index + 1, box_bottom, 
+             border_color = color.new(box_color, 100), 
+             bgcolor = box_color,
+             border_width = 0)
+        array.push(fvg_boxes, b)
+        array.push(fvg_start_bars, bar_index)
