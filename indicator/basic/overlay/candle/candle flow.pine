@@ -28,17 +28,16 @@ else
         refHigh := high[1]
         refLow := low[1]
 
-// V1: 꼬리 기준
+// V1: wick
 longSignal_v1  = high > refHigh
 shortSignal_v1 = low < refLow
 bothSweep_v1   = longSignal_v1 and shortSignal_v1
 
-// V2: 몸통(close) 기준
+// V2: body
 longSignal_v2  = close > refHigh
 shortSignal_v2 = close < refLow
 bothSweep_v2   = longSignal_v2 and shortSignal_v2
 
-// 선택된 버전에 따라 적용
 longSignal  = signalVersion == "V1" ? longSignal_v1  : longSignal_v2
 shortSignal = signalVersion == "V1" ? shortSignal_v1 : shortSignal_v2
 bothSweep   = signalVersion == "V1" ? bothSweep_v1   : bothSweep_v2
