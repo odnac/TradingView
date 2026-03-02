@@ -1,0 +1,21 @@
+//@version=6
+indicator("24h Rolling VWAP", overlay = true)
+
+showVWAP = input.bool(true, 'Show 24h Rolling VWAP', group = 'VWAP Settings')
+
+fast_vwap_logic() =>
+    pv = hlc3 * volume
+    vol = volume
+    
+    sum_pv = ta.cum(pv)
+    sum_vol = ta.cum(vol)
+    
+    lookback = 1440
+    v24_pv = sum_pv - ta.valuewhen(true, sum_pv, lookback)
+    v24_vol = sum_vol - ta.valuewhen(true, sum_vol, lookback)
+    
+    v24_pv / v24_vol
+
+vwap24h = request.security(syminfo.tickerid, "1", fast_vwap_logic(), lookahead=barmerge.lookahead_off)
+
+plot(showVWAP ? vwap24h : na, title="24h Fast VWAP", color=color.yellow)
