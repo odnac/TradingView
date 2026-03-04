@@ -1,136 +1,61 @@
 //@version=6
-indicator('Candle Flow [odnac]', overlay = false, max_boxes_count = 500)
+indicator('Candle flow [odnac]', overlay = false)
 
-// ============================================================================
-// Candle
-// ============================================================================
-showSignal = input.bool(true, 'show signal', group = 'signal')
-signalVersion = input.string("V1", "Signal Version", options=["V1", "V2"], group = 'signal')
+// Settings
+showSignal = input.bool(true, 'show bg signal', group = 'Settings')
 
-isInside = high <= high[1] and low >= low[1]
-
+// mother candle
 var float refHigh = na
-var float refLow = na
-var bool insideMode = false
+var float refLow  = na
+
+if na(refHigh)
+    refHigh := high
+    refLow  := low
+
+// detect inside bar
+isInside = high <= refHigh and low >= refLow
+
+// breakout condition
+longSignal  = not isInside and high > refHigh
+shortSignal = not isInside and low  < refLow
+bothSweep   = longSignal and shortSignal
+
+// detect trend bias
 var int lastDirectionalTrend = 0
-
-if bar_index == 1
-    refHigh := high[1]
-    refLow := low[1]
-
-if isInside
-    if not insideMode
-        refHigh := high[1]
-        refLow := low[1]
-        insideMode := true
-else
-    if not insideMode
-        refHigh := high[1]
-        refLow := low[1]
-
-// V1: wick
-longSignal_v1  = high > refHigh
-shortSignal_v1 = low < refLow
-bothSweep_v1   = longSignal_v1 and shortSignal_v1
-
-// V2: body
-longSignal_v2  = close > refHigh
-shortSignal_v2 = close < refLow
-bothSweep_v2   = longSignal_v2 and shortSignal_v2
-
-longSignal  = signalVersion == "V1" ? longSignal_v1  : longSignal_v2
-shortSignal = signalVersion == "V1" ? shortSignal_v1 : shortSignal_v2
-bothSweep   = signalVersion == "V1" ? bothSweep_v1   : bothSweep_v2
 
 if longSignal and not bothSweep
     lastDirectionalTrend := 1
 if shortSignal and not bothSweep
     lastDirectionalTrend := -1
-if longSignal or shortSignal
-    insideMode := false
 
-color bullColor = #089981
-color bearColor = #f23645
-color bothColor = color.white
+// update mother candle
+if longSignal or shortSignal or bothSweep
+    refHigh := high
+    refLow  := low
+
+// color
+color bullColor    = #089981
+color bearColor    = #f23645
+color bothColor    = color.white
 color neutralColor = color.new(color.gray, 60)
 
-candleColor = bothSweep ? bothColor : longSignal ? bullColor : shortSignal ? bearColor : neutralColor
+candleColor = bothSweep    ? bothColor    :
+              longSignal   ? bullColor    :
+              shortSignal  ? bearColor    :
+              neutralColor
 
 plotcandle(open, high, low, close,
-     color = candleColor,
-     wickcolor = candleColor,
+     color       = candleColor,
+     wickcolor   = candleColor,
      bordercolor = candleColor,
-     display = display.all - display.status_line)
+     display     = display.all - display.status_line)
 
-prevDir = lastDirectionalTrend[1]
-trueReversal = (prevDir == 1 and lastDirectionalTrend == -1) or (prevDir == -1 and lastDirectionalTrend == 1)
-bgColor = trueReversal and lastDirectionalTrend == 1 ? color.new(bullColor, 90) : trueReversal and lastDirectionalTrend == -1 ? color.new(bearColor, 90) : na
+// signal
+prevDir      = lastDirectionalTrend[1]
+trueReversal = (prevDir == 1 and lastDirectionalTrend == -1) or
+               (prevDir == -1 and lastDirectionalTrend == 1)
+
+bgColor = trueReversal and lastDirectionalTrend == 1  ? color.new(bullColor, 90) :
+          trueReversal and lastDirectionalTrend == -1 ? color.new(bearColor, 90) : na
+
 bgcolor(showSignal ? bgColor : na)
-
-// ============================================================================
-// FVG + filter
-// ============================================================================
-show_fvg = input.bool(true, 'Show Filtered FVG', group = 'FVG Settings')
-max_bars_extend = input.int(100, 'Max Bars to Extend', minval = 10, maxval = 500, group = 'FVG Settings')
-
-var array<box> fvg_boxes = array.new_box()
-var array<int> fvg_start_bars = array.new_int()
-
-check_fvg_condition() =>
-    float gap_top = 0.0
-    float gap_bottom = 0.0
-    bool is_bull_fvg = false
-    bool is_bear_fvg = false
-
-    if high[2] < low
-        gap_top := low
-        gap_bottom := high[2]
-        is_bull_fvg := true
-    else if low[2] > high
-        gap_top := low[2]
-        gap_bottom := high
-        is_bear_fvg := true
-
-    [is_bull_fvg or is_bear_fvg, gap_top, gap_bottom, is_bull_fvg]
-
-box_touched(box_top, box_bottom) =>
-    not(low > box_top or high < box_bottom)
-
-if array.size(fvg_boxes) > 0
-    for i = array.size(fvg_boxes) - 1 to 0 by 1
-        b = array.get(fvg_boxes, i)
-        start_bar = array.get(fvg_start_bars, i)
-        
-        if not na(b)
-            box_top = box.get_top(b)
-            box_bottom = box.get_bottom(b)
-            box_right = box.get_right(b)
-            bars_extended = bar_index - start_bar
-
-            if bars_extended >= max_bars_extend
-                array.remove(fvg_boxes, i)
-                array.remove(fvg_start_bars, i)
-                box.delete(b)
-            else if box_right == bar_index and box_touched(box_top, box_bottom)
-                array.remove(fvg_boxes, i)
-                array.remove(fvg_start_bars, i)
-            else if box_right == bar_index
-                box.set_right(b, bar_index + 1)
-
-[is_fvg, fvg_top, fvg_bottom, is_bull] = check_fvg_condition()
-
-is_signal_candle(offset) =>
-    longSignal[offset] or shortSignal[offset] or bothSweep[offset]
-
-can_draw_fvg = is_signal_candle(2) and is_signal_candle(1) and is_signal_candle(0)
-
-if is_fvg and show_fvg and can_draw_fvg
-    fvg_box_color = is_bull ? color.new(bullColor, 80) : color.new(bearColor, 80)
-    
-    b = box.new(bar_index[2], fvg_top, bar_index + 1, fvg_bottom, 
-         border_color = color.new(fvg_box_color, 100), 
-         bgcolor = fvg_box_color, 
-         border_width = 0)
-         
-    array.push(fvg_boxes, b)
-    array.push(fvg_start_bars, bar_index)
