@@ -1,0 +1,132 @@
+//@version=6
+indicator("up_260304", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
+
+// ============================================================================
+// DIVIDERS
+// ============================================================================
+showWeeklyDiver = input.bool(true,  'Show Weekly Divider',  group = 'Dividers')
+showDailyDiver  = input.bool(true,  'Show Daily Divider',   group = 'Dividers')
+showH4Diver     = input.bool(false, 'Show H4 Divider',      group = 'Dividers')
+showH1Diver     = input.bool(false, 'Show H1 Divider',      group = 'Dividers')
+
+showWeeklyTimeframe = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 240
+showDailyTimeframe  = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 60
+showH4Timeframe     = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 30
+showH1Timeframe     = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 30
+
+is_new_week = dayofweek == dayofweek.sunday and dayofweek[1] != dayofweek.sunday
+is_new_day  = dayofmonth != dayofmonth[1]
+is_new_h4   = hour != hour[1] and hour % 4 == 0
+is_new_h1   = hour != hour[1]
+
+if showWeeklyDiver and is_new_week and showWeeklyTimeframe
+    line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 70), extend = extend.both, style = line.style_dashed)
+if showDailyDiver and is_new_day and showDailyTimeframe
+    line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dashed)
+if showH4Diver and is_new_h4 and not is_new_day and showH4Timeframe
+    line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dotted)
+if showH1Diver and is_new_h1 and not is_new_day and showH1Timeframe
+    line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dotted)
+
+
+// ============================================================================
+// FVG
+// ============================================================================
+show_fvg        = input.bool(true, 'Show Fair Value Gaps',   group = 'FVG')
+max_bars_extend = input.int(100,   'Maximum Bars to Extend', group = 'FVG', minval = 10, maxval = 500, tooltip = '박스를 유지할 최대 봉 갯수')
+
+var array<box> fvg_boxes      = array.new_box()
+var array<int> fvg_start_bars = array.new_int()
+
+check_fvg_condition() =>
+    float gap_top    = 0.0
+    float gap_bottom = 0.0
+    bool  is_bull    = false
+    bool  is_bear    = false
+    if high[2] < low
+        gap_top    := low
+        gap_bottom := high[2]
+        is_bull    := true
+    else if low[2] > high
+        gap_top    := low[2]
+        gap_bottom := high
+        is_bear    := true
+    [is_bull or is_bear, gap_top, gap_bottom, is_bull]
+
+box_touched(box_top, box_bottom) =>
+    not (low > box_top or high < box_bottom)
+
+if array.size(fvg_boxes) > 0
+    for i = array.size(fvg_boxes) - 1 to 0 by 1
+        b         = array.get(fvg_boxes, i)
+        start_bar = array.get(fvg_start_bars, i)
+        if not na(b)
+            box_top       = box.get_top(b)
+            box_bottom    = box.get_bottom(b)
+            box_right     = box.get_right(b)
+            bars_extended = bar_index - start_bar
+            if bars_extended >= max_bars_extend
+                array.remove(fvg_boxes, i)
+                array.remove(fvg_start_bars, i)
+            else if box_right == bar_index and box_touched(box_top, box_bottom)
+                array.remove(fvg_boxes, i)
+                array.remove(fvg_start_bars, i)
+            else if box_right == bar_index
+                box.set_right(b, bar_index + 1)
+
+[is_fvg, fvg_top, fvg_bottom, is_bull_fvg] = check_fvg_condition()
+
+if is_fvg and show_fvg
+    fvg_color = is_bull_fvg ? color.new(#089981, 80) : color.new(#f23645, 80)
+    b = box.new(bar_index[2], fvg_top, bar_index + 1, fvg_bottom,
+         border_color = color.new(fvg_color, 100),
+         bgcolor      = fvg_color,
+         border_width = 0)
+    array.push(fvg_boxes, b)
+    array.push(fvg_start_bars, bar_index)
+
+
+// ============================================================================
+// SESSION BOXES
+// ============================================================================
+grp_sessions = 'Session Boxes'
+showAsia              = input.bool(true,  'Show Asia Session',          group = grp_sessions)
+showLondon            = input.bool(true,  'Show London Session',        group = grp_sessions)
+showNY                = input.bool(true,  'Show NY Session',            group = grp_sessions)
+showSessionsOnWeekend = input.bool(false, 'Show Sessions on Weekend',   group = grp_sessions)
+
+showSessionsInTimeframe = timeframe.isintraday and timeframe.multiplier < 60
+
+colorAsia   = color.new(#F48FB1, 92)
+colorLondon = color.new(#FFF59D, 92)
+colorNY     = color.new(#90CAF9, 92)
+
+asiaSession   = '0900-1300'
+londonSession = '0800-1100'
+nySession     = '0830-1130'
+
+is_weekend = dayofweek == dayofweek.saturday or dayofweek == dayofweek.sunday
+
+process_session(sessionTime, sessionColor, showToggle, sessionTimezone) =>
+    var box sBox = na
+    t              = time(timeframe.period, sessionTime, sessionTimezone)
+    is_new_session = not na(t) and na(t[1])
+    is_in_session  = not na(t)
+    bool canShowSession = showToggle and showSessionsInTimeframe and (showSessionsOnWeekend or not is_weekend)
+    if canShowSession
+        if is_new_session
+            sBox := box.new(
+                 left         = bar_index,
+                 top          = high,
+                 right        = bar_index,
+                 bottom       = low,
+                 border_color = color.new(sessionColor, 100),
+                 bgcolor      = sessionColor)
+        if is_in_session and not na(sBox)
+            box.set_right(sBox,   bar_index + 1)
+            box.set_top(sBox,     math.max(box.get_top(sBox), high))
+            box.set_bottom(sBox,  math.min(box.get_bottom(sBox), low))
+
+process_session(asiaSession,   colorAsia,   showAsia,   "Asia/Tokyo")
+process_session(londonSession, colorLondon, showLondon, "Europe/London")
+process_session(nySession,     colorNY,     showNY,     "America/New_York")
