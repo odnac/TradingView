@@ -1,0 +1,636 @@
+//@version=6
+indicator("상단", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
+
+
+// ============================================================================
+// DIVIDERS
+// ============================================================================
+showWeeklyDiver = input.bool(true,  'Show Weekly Divider',  group = 'Dividers')
+showDailyDiver  = input.bool(true,  'Show Daily Divider',   group = 'Dividers')
+showH4Diver     = input.bool(false, 'Show H4 Divider',      group = 'Dividers')
+showH1Diver     = input.bool(false, 'Show H1 Divider',      group = 'Dividers')
+
+showWeeklyTimeframe = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 240
+showDailyTimeframe  = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 60
+showH4Timeframe     = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 30
+showH1Timeframe     = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 30
+
+is_new_week = dayofweek == dayofweek.sunday and dayofweek[1] != dayofweek.sunday
+is_new_day  = dayofmonth != dayofmonth[1]
+is_new_h4   = hour != hour[1] and hour % 4 == 0
+is_new_h1   = hour != hour[1]
+
+if showWeeklyDiver and is_new_week and showWeeklyTimeframe
+    line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 70), extend = extend.both, style = line.style_dashed)
+if showDailyDiver and is_new_day and showDailyTimeframe
+    line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dashed)
+if showH4Diver and is_new_h4 and not is_new_day and showH4Timeframe
+    line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dotted)
+if showH1Diver and is_new_h1 and not is_new_day and showH1Timeframe
+    line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dotted)
+
+
+
+// ============================================================================
+// SESSION BOXES
+// ============================================================================
+grp_sessions = 'Session Boxes'
+showAsia              = input.bool(true,  'Show Asia Session',          group = grp_sessions)
+showLondon            = input.bool(true,  'Show London Session',        group = grp_sessions)
+showNY                = input.bool(true,  'Show NY Session',            group = grp_sessions)
+showSessionsOnWeekend = input.bool(false, 'Show Sessions on Weekend',   group = grp_sessions)
+sessionDisplayMode    = input.string('Background', 'Display Mode', options = ['Box', 'Background'], group = grp_sessions,
+     tooltip = 'Box: 고가/저가 기준 박스 표시\nBackground: 차트 전체 배경색으로 표시')
+
+showSessionsInTimeframe = timeframe.isintraday and timeframe.multiplier < 60
+is_weekend = dayofweek == dayofweek.saturday or dayofweek == dayofweek.sunday
+
+colorAsia   = color.new(#F48FB1, 95)
+colorLondon = color.new(#FFF59D, 95)
+colorNY     = color.new(#90CAF9, 95)
+
+asiaSession   = '0900-1300'
+londonSession = '0800-1100'
+nySession     = '0830-1130'
+
+// ── 세션 감지 (전역 스코프) ─────────────────────────────────────
+t_asia   = time(timeframe.period, asiaSession,   "Asia/Tokyo")
+t_london = time(timeframe.period, londonSession, "Europe/London")
+t_ny     = time(timeframe.period, nySession,     "America/New_York")
+
+in_asia   = not na(t_asia)
+in_london = not na(t_london)
+in_ny     = not na(t_ny)
+
+bool canShow = showSessionsInTimeframe and (showSessionsOnWeekend or not is_weekend)
+
+bgcolor(showAsia   and canShow and sessionDisplayMode == 'Background' and in_asia   ? colorAsia   : na, title = 'Asia Session BG')
+bgcolor(showLondon and canShow and sessionDisplayMode == 'Background' and in_london ? colorLondon : na, title = 'London Session BG')
+bgcolor(showNY     and canShow and sessionDisplayMode == 'Background' and in_ny     ? colorNY     : na, title = 'NY Session BG')
+
+// ── Box Mode ──────────────────────────────────────────
+process_session(sessionTime, sessionColor, showToggle, sessionTimezone) =>
+    var box sBox = na
+    t              = time(timeframe.period, sessionTime, sessionTimezone)
+    is_new_session = not na(t) and na(t[1])
+    is_in_session  = not na(t)
+    bool canShowSession = showToggle and showSessionsInTimeframe and (showSessionsOnWeekend or not is_weekend)
+    if canShowSession
+        if is_new_session
+            sBox := box.new(
+                 left         = bar_index,
+                 top          = high,
+                 right        = bar_index,
+                 bottom       = low,
+                 border_color = color.new(sessionColor, 100),
+                 bgcolor      = sessionColor)
+        if is_in_session and not na(sBox)
+            box.set_right(sBox,   bar_index + 1)
+            box.set_top(sBox,     math.max(box.get_top(sBox), high))
+            box.set_bottom(sBox,  math.min(box.get_bottom(sBox), low))
+
+if sessionDisplayMode == 'Box'
+    process_session(asiaSession,   colorAsia,   showAsia,   "Asia/Tokyo")
+    process_session(londonSession, colorLondon, showLondon, "Europe/London")
+    process_session(nySession,     colorNY,     showNY,     "America/New_York")
+
+
+
+// ============================================================================
+// 4 Candle Pattern
+// ============================================================================
+cp_showLabels = input.bool(true, 'Show Signals', group = '4 Candle')
+cp_showLines  = input.bool(true, 'Show Lines',   group = '4 Candle')
+
+cp_shortColor = input.color(color.rgb(255, 82, 82),   'Short Color', group = '4 Candle')
+cp_longColor  = input.color(color.rgb(76, 175, 80),   'Long Color',  group = '4 Candle')
+
+// CANDLE DEFINITION
+isGreen(i) =>
+    close[i] > open[i]
+isRed(i) =>
+    close[i] < open[i]
+
+// ─── Short Pattern ───
+short_c1_green  = isGreen(3)
+short_c2_red    = isRed(2)
+short_c3_red    = isRed(1)
+short_c4_red    = isRed(0)
+short_gap       = low[2] > high[0]
+short_c1_in_gap = low[3] < low[2] and low[3] > high[0]
+
+cp_shortPattern = short_c1_green and short_c2_red and short_c3_red and short_c4_red and short_gap and short_c1_in_gap
+
+// ─── Long Pattern ───
+long_c1_red     = isRed(3)
+long_c2_green   = isGreen(2)
+long_c3_green   = isGreen(1)
+long_c4_green   = isGreen(0)
+long_gap        = high[2] < low[0]
+long_c1_in_gap  = high[3] > high[2] and high[3] < low[0]
+
+cp_longPattern = long_c1_red and long_c2_green and long_c3_green and long_c4_green and long_gap and long_c1_in_gap
+
+// LINE TRACKING VARIABLES
+var line  cp_shortLine      = na
+var float cp_shortLinePrice = na
+var int   cp_shortLineStart = na
+var int   cp_shortLineState = 0
+
+var line  cp_longLine       = na
+var float cp_longLinePrice  = na
+var int   cp_longLineStart  = na
+var int   cp_longLineState  = 0
+
+// ─── Short Line ───
+if cp_shortPattern and cp_showLines
+    cp_shortLinePrice := low[3]
+    cp_shortLineStart := bar_index - 3
+    cp_shortLineState := 1
+    cp_shortLine := line.new(x1 = cp_shortLineStart, y1 = cp_shortLinePrice, x2 = bar_index, y2 = cp_shortLinePrice, xloc = xloc.bar_index, color = color.new(cp_shortColor, 50), width = 1, style = line.style_solid)
+
+else if cp_shortPattern and not cp_showLines
+    cp_shortLinePrice := low[3]
+    cp_shortLineStart := bar_index - 3
+    cp_shortLineState := 1
+
+if cp_shortLineState == 1
+    if cp_showLines and not na(cp_shortLine)
+        line.set_x2(cp_shortLine, bar_index)
+    if low <= cp_shortLinePrice
+        cp_shortLineState := 2
+
+else if cp_shortLineState == 2
+    if cp_showLines and not na(cp_shortLine)
+        line.set_x2(cp_shortLine, bar_index)
+    cp_shortLineState := 3
+
+else if cp_shortLineState == 3
+    if cp_showLines and not na(cp_shortLine)
+        line.set_x2(cp_shortLine, bar_index)
+    cp_shortLineState := 4
+
+// ─── Long Line ───
+if cp_longPattern and cp_showLines
+    cp_longLinePrice := high[3]
+    cp_longLineStart := bar_index - 3
+    cp_longLineState := 1
+    cp_longLine := line.new(x1 = cp_longLineStart, y1 = cp_longLinePrice, x2 = bar_index, y2 = cp_longLinePrice, xloc = xloc.bar_index, color = color.new(cp_longColor, 50), width = 1, style = line.style_solid)
+
+else if cp_longPattern and not cp_showLines
+    cp_longLinePrice := high[3]
+    cp_longLineStart := bar_index - 3
+    cp_longLineState := 1
+
+if cp_longLineState == 1
+    if cp_showLines and not na(cp_longLine)
+        line.set_x2(cp_longLine, bar_index)
+    if high >= cp_longLinePrice
+        cp_longLineState := 2
+
+else if cp_longLineState == 2
+    if cp_showLines and not na(cp_longLine)
+        line.set_x2(cp_longLine, bar_index)
+    cp_longLineState := 3
+
+else if cp_longLineState == 3
+    if cp_showLines and not na(cp_longLine)
+        line.set_x2(cp_longLine, bar_index)
+    cp_longLineState := 4
+
+// VISUALIZATION
+if cp_shortPattern and cp_showLabels
+    label.new(x = bar_index - 3, y = high[3], text = '▼', xloc = xloc.bar_index, yloc = yloc.abovebar, style = label.style_label_down, color = color(na), textcolor = color.new(cp_shortColor, 50), size = size.tiny, tooltip = 'Short Pattern')
+
+if cp_longPattern and cp_showLabels
+    label.new(x = bar_index - 3, y = low[3], text = '▲', xloc = xloc.bar_index, yloc = yloc.belowbar, style = label.style_label_up, color = color(na), textcolor = color.new(cp_longColor, 50), size = size.tiny, tooltip = 'Long Pattern')
+
+
+
+// ============================================================================
+// Market Structure
+// ============================================================================
+// INPUT SETTINGS
+showSwings     = input.bool(false, 'Show Swing Points')
+showLines      = input.bool(true, 'Show BOS/CHoCH')
+showSweeps     = input.bool(true, 'Show Sweeps', tooltip = 'Marks when price wicks through a prior swing but fails to close beyond it')
+versionSelect  = input.string('V3', 'Version', options = ['V1', 'V2', 'V3'], 
+     tooltip = 'V1: Standard pivot\nV2: Close renewal within N bars + Auto-update\nV3: Immediate confirmation (No time limit)')
+leftBars       = input.int(36, 'Swing Left Bars', minval = 1)
+rightBars      = input.int(7,  'Swing Right Bars', minval = 1, tooltip = 'V1: pivot confirmation bars\nV2: max bars to wait for confirmation')
+confirmCount   = input.int(3,  'Confirmation Count', minval = 1, tooltip = 'V2/V3: Number of consecutive closes required to confirm a swing point')
+showTrendMode  = input.string('None', 'Trend Visualization', options = ['Background', 'None'])
+
+colWhite = color.white
+
+// VARIABLE MANAGEMENT
+var float lastHighPrice = na, var int lastHighIndex = na
+var float lastLowPrice  = na, var int lastLowIndex  = na
+var int   trend         = 0
+
+var int   phCandIdx = na, var float phCandPrice = na
+var float phLastBearClose = na
+var int   phBearCount = 0
+
+var int   plCandIdx = na, var float plCandPrice = na
+var float plLastBullClose = na
+var int   plBullCount = 0
+
+// Previous swing points — used for sweep detection
+var float prevHighPrice = na, var int prevHighIndex = na
+var float prevLowPrice  = na, var int prevLowIndex  = na
+
+// 1. SWING CANDIDATE DETECTION (V2/V3 only)
+ph_raw = ta.pivothigh(high, leftBars, 1)
+pl_raw = ta.pivotlow(low, leftBars, 1)
+
+if versionSelect != 'V1'
+    if not na(ph_raw)
+        phCandPrice := ph_raw, phCandIdx := bar_index - 1
+        phBearCount := 0, phLastBearClose := na
+    if not na(pl_raw)
+        plCandPrice := pl_raw, plCandIdx := bar_index - 1
+        plBullCount := 0, plLastBullClose := na
+
+// 2. CONFIRMATION LOGIC (V2/V3 only)
+bool isConfirmedH = false
+bool isConfirmedL = false
+
+if versionSelect != 'V1'
+    if not na(phCandIdx) and bar_index > phCandIdx
+        if versionSelect == 'V2' and (bar_index - phCandIdx) > rightBars
+            phCandIdx := na
+        else if close < open
+            if na(phLastBearClose) or close < phLastBearClose
+                phBearCount += 1
+                phLastBearClose := close
+                if phBearCount >= confirmCount
+                    isConfirmedH := true
+
+    if not na(plCandIdx) and bar_index > plCandIdx
+        if versionSelect == 'V2' and (bar_index - plCandIdx) > rightBars
+            plCandIdx := na
+        else if close > open
+            if na(plLastBullClose) or close > plLastBullClose
+                plBullCount += 1
+                plLastBullClose := close
+                if plBullCount >= confirmCount
+                    isConfirmedL := true
+
+// 3. FINAL SWING DETERMINATION
+bool finalValidHigh = false
+bool finalValidLow  = false
+
+if versionSelect == 'V1'
+    ph_v1 = ta.pivothigh(high, leftBars, rightBars)
+    pl_v1 = ta.pivotlow(low, leftBars, rightBars)
+    if not na(ph_v1)
+        prevHighPrice := lastHighPrice, prevHighIndex := lastHighIndex
+        lastHighPrice := ph_v1, lastHighIndex := bar_index - rightBars, finalValidHigh := true
+    if not na(pl_v1)
+        prevLowPrice := lastLowPrice, prevLowIndex := lastLowIndex
+        lastLowPrice := pl_v1, lastLowIndex := bar_index - rightBars, finalValidLow := true
+else
+    if isConfirmedH
+        prevHighPrice := lastHighPrice, prevHighIndex := lastHighIndex
+        lastHighPrice := phCandPrice, lastHighIndex := phCandIdx
+        finalValidHigh := true, phCandIdx := na
+    if isConfirmedL
+        prevLowPrice := lastLowPrice, prevLowIndex := lastLowIndex
+        lastLowPrice := plCandPrice, lastLowIndex := plCandIdx
+        finalValidLow := true, plCandIdx := na
+
+// 3-B. SWEEP DETECTION
+//   Triggered when a new confirmed swing exceeds the prior swing via wick only.
+//   High Sweep: new swing high > prev swing high, but no close above prev high in between.
+//   Low  Sweep: new swing low  < prev swing low,  but no close below prev low  in between.
+bool isSweepH = false
+bool isSweepL = false
+
+if showSweeps and finalValidHigh and not na(prevHighPrice)
+    if lastHighPrice > prevHighPrice
+        int  spanBars   = lastHighIndex - prevHighIndex
+        bool closeAbove = false
+        if spanBars > 0
+            for i = 0 to spanBars - 1
+                if close[bar_index - (prevHighIndex + i + 1)] > prevHighPrice
+                    closeAbove := true
+                    break
+        if not closeAbove
+            isSweepH := true
+
+if showSweeps and finalValidLow and not na(prevLowPrice)
+    if lastLowPrice < prevLowPrice
+        int  spanBars   = lastLowIndex - prevLowIndex
+        bool closeBelow = false
+        if spanBars > 0
+            for i = 0 to spanBars - 1
+                if close[bar_index - (prevLowIndex + i + 1)] < prevLowPrice
+                    closeBelow := true
+                    break
+        if not closeBelow
+            isSweepL := true
+
+// 4. BREAK DETECTION & AUTO-UPDATE (V2/V3 only)
+if not na(lastHighPrice) and ta.crossover(close, lastHighPrice)
+    string txt = (trend == -1 or trend == 0) ? 'CHoCH' : 'BOS'
+    trend := 1
+    if versionSelect == 'V2' or versionSelect == 'V3'
+        float minL = low, int minI = bar_index
+        int searchBars = bar_index - lastHighIndex - 1
+        if searchBars > 0
+            for i = 0 to searchBars
+                if low[i] < minL
+                    minL := low[i], minI := bar_index[i]
+        lastLowPrice := minL, lastLowIndex := minI
+    if showLines
+        line.new(lastHighIndex, lastHighPrice, bar_index, lastHighPrice, color=color.new(colWhite, 50))
+        label.new(int(math.avg(lastHighIndex, bar_index)), lastHighPrice, txt, style=label.style_label_down, color=color(na), textcolor=colWhite, size=size.tiny)
+    lastHighPrice := na
+
+else if not na(lastLowPrice) and ta.crossunder(close, lastLowPrice)
+    string txt = (trend == 1 or trend == 0) ? 'CHoCH' : 'BOS'
+    trend := -1
+    if versionSelect == 'V2' or versionSelect == 'V3'
+        float maxH = high, int maxI = bar_index
+        int searchBars = bar_index - lastLowIndex - 1
+        if searchBars > 0
+            for i = 0 to searchBars
+                if high[i] > maxH
+                    maxH := high[i], maxI := bar_index[i]
+        lastHighPrice := maxH, lastHighIndex := maxI
+    if showLines
+        line.new(lastLowIndex, lastLowPrice, bar_index, lastLowPrice, color=color.new(colWhite, 50))
+        label.new(int(math.avg(lastLowIndex, bar_index)), lastLowPrice, txt, style=label.style_label_up, color=color(na), textcolor=colWhite, size=size.tiny)
+    lastLowPrice := na
+
+// 5. VISUALIZATION
+if showSwings and finalValidHigh
+    label.new(lastHighIndex, lastHighPrice, "◈", yloc=yloc.abovebar, style=label.style_label_down, color=color(na), textcolor=color.new(colWhite, 50), size=size.tiny)
+if showSwings and finalValidLow
+    label.new(lastLowIndex, lastLowPrice, "◈", yloc=yloc.belowbar, style=label.style_label_up, color=color(na), textcolor=color.new(colWhite, 50), size=size.tiny)
+
+if isSweepH
+    line.new(prevHighIndex, prevHighPrice, lastHighIndex, prevHighPrice, color=color.new(colWhite, 50), style=line.style_dashed, width=1)
+    label.new(int(math.avg(prevHighIndex, lastHighIndex)), prevHighPrice, "X", style=label.style_label_down, color=color(na), textcolor=colWhite, size=size.tiny)
+
+if isSweepL
+    line.new(prevLowIndex, prevLowPrice, lastLowIndex, prevLowPrice, color=color.new(colWhite, 50), style=line.style_dashed, width=1)
+    label.new(int(math.avg(prevLowIndex, lastLowIndex)), prevLowPrice, "X", style=label.style_label_up, color=color(na), textcolor=colWhite, size=size.tiny)
+
+trendColor = trend == 1 ? color.new(color.green, 90) : trend == -1 ? color.new(color.red, 90) : na
+bgcolor(showTrendMode == 'Background' ? trendColor : na)
+
+
+
+// ============================================================================
+// FVG
+// ============================================================================
+show_fvg        = input.bool(true, 'Show Fair Value Gaps',   group = 'FVG')
+max_bars_extend = input.int(50,   'Maximum Bars to Extend', group = 'FVG', minval = 10, maxval = 500, tooltip = '박스를 유지할 최대 봉 갯수')
+
+var array<box> fvg_boxes      = array.new_box()
+var array<int> fvg_start_bars = array.new_int()
+
+check_fvg_condition() =>
+    float gap_top    = 0.0
+    float gap_bottom = 0.0
+    bool  is_bull    = false
+    bool  is_bear    = false
+    if high[2] < low
+        gap_top    := low
+        gap_bottom := high[2]
+        is_bull    := true
+    else if low[2] > high
+        gap_top    := low[2]
+        gap_bottom := high
+        is_bear    := true
+    [is_bull or is_bear, gap_top, gap_bottom, is_bull]
+
+box_touched(box_top, box_bottom) =>
+    not (low > box_top or high < box_bottom)
+
+if array.size(fvg_boxes) > 0
+    for i = array.size(fvg_boxes) - 1 to 0 by 1
+        b         = array.get(fvg_boxes, i)
+        start_bar = array.get(fvg_start_bars, i)
+        if not na(b)
+            box_top       = box.get_top(b)
+            box_bottom    = box.get_bottom(b)
+            box_right     = box.get_right(b)
+            bars_extended = bar_index - start_bar
+            if bars_extended >= max_bars_extend
+                array.remove(fvg_boxes, i)
+                array.remove(fvg_start_bars, i)
+            else if box_right == bar_index and box_touched(box_top, box_bottom)
+                array.remove(fvg_boxes, i)
+                array.remove(fvg_start_bars, i)
+            else if box_right == bar_index
+                box.set_right(b, bar_index + 1)
+
+[is_fvg, fvg_top, fvg_bottom, is_bull_fvg] = check_fvg_condition()
+
+if is_fvg and show_fvg
+    fvg_color = is_bull_fvg ? color.new(#089981, 90) : color.new(#f23645, 90)
+    b = box.new(bar_index[2], fvg_top, bar_index + 1, fvg_bottom,
+         border_color = color.new(fvg_color, 100),
+         bgcolor      = fvg_color,
+         border_width = 0)
+    array.push(fvg_boxes, b)
+    array.push(fvg_start_bars, bar_index)
+
+
+
+// ============================================================================
+// TrendLines
+// ============================================================================
+// ── TrendLines SETTINGS ──
+var string trendLineG = 'TrendLine'
+tl_showTrendLines = input.bool(true,  'Show Trendlines',   group = trendLineG)
+tl_leftBars       = input.int(20,     'Swing Left Bars',   minval = 1, group = trendLineG)
+tl_confirmCount   = input.int(3,      'Confirmation Count', minval = 1, group = trendLineG, tooltip = 'Number of consecutive renewing closes required to confirm a swing point')
+tl_showLabels     = input.bool(false, 'Show Swing Points', group = trendLineG)
+
+// SWING CANDIDATE DETECTION (V3)
+tl_ph_raw = ta.pivothigh(high, tl_leftBars, 1)
+tl_pl_raw = ta.pivotlow(low,   tl_leftBars, 1)
+
+var int   tl_phCandIdx       = na, var float tl_phCandPrice    = na
+var float tl_phLastBearClose = na, var int   tl_phBearCount    = 0
+var int   tl_plCandIdx       = na, var float tl_plCandPrice    = na
+var float tl_plLastBullClose = na, var int   tl_plBullCount    = 0
+
+if not na(tl_ph_raw)
+    tl_phCandPrice := tl_ph_raw, tl_phCandIdx := bar_index - 1
+    tl_phBearCount := 0,         tl_phLastBearClose := na
+
+if not na(tl_pl_raw)
+    tl_plCandPrice := tl_pl_raw, tl_plCandIdx := bar_index - 1
+    tl_plBullCount := 0,         tl_plLastBullClose := na
+
+// CONFIRMATION LOGIC (V3)
+bool tl_isConfirmedH = false
+bool tl_isConfirmedL = false
+
+if not na(tl_phCandIdx) and bar_index > tl_phCandIdx
+    if close < open
+        if na(tl_phLastBearClose) or close < tl_phLastBearClose
+            tl_phBearCount      += 1
+            tl_phLastBearClose  := close
+            if tl_phBearCount >= tl_confirmCount
+                tl_isConfirmedH := true
+
+if not na(tl_plCandIdx) and bar_index > tl_plCandIdx
+    if close > open
+        if na(tl_plLastBullClose) or close > tl_plLastBullClose
+            tl_plBullCount      += 1
+            tl_plLastBullClose  := close
+            if tl_plBullCount >= tl_confirmCount
+                tl_isConfirmedL := true
+
+bool  tl_isValidHigh    = false
+bool  tl_isValidLow     = false
+float tl_ph             = na
+float tl_pl             = na
+int   tl_phConfirmedIdx = na
+int   tl_plConfirmedIdx = na
+
+if tl_isConfirmedH
+    tl_ph             := tl_phCandPrice
+    tl_phConfirmedIdx := tl_phCandIdx
+    tl_isValidHigh    := true
+    tl_phCandIdx      := na
+
+if tl_isConfirmedL
+    tl_pl             := tl_plCandPrice
+    tl_plConfirmedIdx := tl_plCandIdx
+    tl_isValidLow     := true
+    tl_plCandIdx      := na
+
+// HELPER FUNCTIONS
+tl_trendlinePrice(x1, y1, x2, y2, x) =>
+    x2 == x1 ? float(na) : y1 + (y2 - y1) * (x - x1) / (x2 - x1)
+
+tl_isClearHigh(x1, y1, x2, y2) =>
+    bool clear = true
+    int span = x2 - x1 - 1
+    if span > 0
+        for i = 1 to span
+            int   barIdx  = x2 - i
+            float lineAt  = tl_trendlinePrice(x1, y1, x2, y2, barIdx)
+            float barHigh = high[bar_index - barIdx]
+            if not na(lineAt) and barHigh >= lineAt
+                clear := false
+                break
+    clear
+
+tl_isClearLow(x1, y1, x2, y2) =>
+    bool clear = true
+    int span = x2 - x1 - 1
+    if span > 0
+        for i = 1 to span
+            int   barIdx = x2 - i
+            float lineAt = tl_trendlinePrice(x1, y1, x2, y2, barIdx)
+            float barLow = low[bar_index - barIdx]
+            if not na(lineAt) and barLow <= lineAt
+                clear := false
+                break
+    clear
+
+// SWING POINT & LINE TRACKING
+var int   tl_prevHighBar   = na, var float tl_prevHighPrice = na
+var int   tl_prevLowBar    = na, var float tl_prevLowPrice  = na
+var line  tl_activHighLine = na
+var line  tl_activLowLine  = na
+
+tl_colWhite = color.white
+
+if tl_showTrendLines and not na(tl_activHighLine)
+    x1 = line.get_x1(tl_activHighLine), y1 = line.get_y1(tl_activHighLine)
+    x2 = line.get_x2(tl_activHighLine), y2 = line.get_y2(tl_activHighLine)
+    tl_lineNow = tl_trendlinePrice(x1, y1, x2, y2, bar_index)
+    if not na(tl_lineNow)
+        if close > tl_lineNow
+            line.set_x2(tl_activHighLine, bar_index)
+            line.set_y2(tl_activHighLine, tl_lineNow)
+            tl_activHighLine := na
+        else
+            line.set_x2(tl_activHighLine, bar_index)
+            line.set_y2(tl_activHighLine, tl_lineNow)
+
+if tl_showTrendLines and not na(tl_activLowLine)
+    x1 = line.get_x1(tl_activLowLine), y1 = line.get_y1(tl_activLowLine)
+    x2 = line.get_x2(tl_activLowLine), y2 = line.get_y2(tl_activLowLine)
+    tl_lineNow = tl_trendlinePrice(x1, y1, x2, y2, bar_index)
+    if not na(tl_lineNow)
+        if close < tl_lineNow
+            line.set_x2(tl_activLowLine, bar_index)
+            line.set_y2(tl_activLowLine, tl_lineNow)
+            tl_activLowLine := na
+        else
+            line.set_x2(tl_activLowLine, bar_index)
+            line.set_y2(tl_activLowLine, tl_lineNow)
+
+if tl_isValidHigh
+    if tl_showTrendLines and not na(tl_prevHighBar)
+        if not na(tl_activHighLine)
+            line.delete(tl_activHighLine)
+            tl_activHighLine := na
+        if tl_prevHighPrice > tl_ph and tl_isClearHigh(tl_prevHighBar, tl_prevHighPrice, tl_phConfirmedIdx, tl_ph)
+            tl_activHighLine := line.new(
+                 x1    = tl_prevHighBar,
+                 y1    = tl_prevHighPrice,
+                 x2    = tl_phConfirmedIdx,
+                 y2    = tl_ph,
+                 xloc  = xloc.bar_index,
+                 style = line.style_solid,
+                 color = color.new(color.green, 50)
+             )
+    tl_prevHighBar   := tl_phConfirmedIdx
+    tl_prevHighPrice := tl_ph
+
+    if tl_showLabels
+        label.new(
+             x         = tl_phConfirmedIdx,
+             y         = tl_ph,
+             text      = "◈",
+             xloc      = xloc.bar_index,
+             yloc      = yloc.abovebar,
+             style     = label.style_label_down,
+             color     = color(na),
+             textcolor = color.new(tl_colWhite, 50),
+             size      = size.tiny,
+             tooltip   = 'Swing Confirm High'
+         )
+
+if tl_isValidLow
+    if tl_showTrendLines and not na(tl_prevLowBar)
+        if not na(tl_activLowLine)
+            line.delete(tl_activLowLine)
+            tl_activLowLine := na
+        if tl_prevLowPrice < tl_pl and tl_isClearLow(tl_prevLowBar, tl_prevLowPrice, tl_plConfirmedIdx, tl_pl)
+            tl_activLowLine := line.new(
+                 x1    = tl_prevLowBar,
+                 y1    = tl_prevLowPrice,
+                 x2    = tl_plConfirmedIdx,
+                 y2    = tl_pl,
+                 xloc  = xloc.bar_index,
+                 style = line.style_solid,
+                 color = color.new(color.red, 50)
+             )
+    tl_prevLowBar   := tl_plConfirmedIdx
+    tl_prevLowPrice := tl_pl
+
+    if tl_showLabels
+        label.new(
+             x         = tl_plConfirmedIdx,
+             y         = tl_pl,
+             text      = "◈",
+             xloc      = xloc.bar_index,
+             yloc      = yloc.belowbar,
+             style     = label.style_label_up,
+             color     = color(na),
+             textcolor = color.new(tl_colWhite, 50),
+             size      = size.tiny,
+             tooltip   = 'Swing Confirm Low'
+         )
