@@ -1,0 +1,129 @@
+//@version=6
+indicator('CISD [odnac]', overlay = false, max_boxes_count = 500)
+
+// ============================================================================
+// CISD
+// ============================================================================
+showSignal  = input.bool(true, 'signal', tooltip = 'long short signal')
+breakMode   = input.string('body', 'Break Type', options = ['wich', 'body'])
+
+color bullColor    = #089981
+color bearColor    = #f23645
+color bothColor    = color.white
+color neutralColor = color.new(color.gray, 60)
+
+var float refHigh = na
+var float refLow  = na
+
+if na(refHigh)
+    refHigh := high
+    refLow  := low
+
+bodyHigh = math.max(open, close)
+bodyLow  = math.min(open, close)
+
+longSignal  = breakMode == 'body' ? bodyHigh > refHigh : high > refHigh
+shortSignal = breakMode == 'body' ? bodyLow  < refLow  : low  < refLow
+bothSweep   = longSignal and shortSignal
+
+isColored = longSignal or shortSignal or bothSweep
+
+var int lastDirectionalTrend = 0
+
+if longSignal and not bothSweep
+    lastDirectionalTrend := 1
+if shortSignal and not bothSweep
+    lastDirectionalTrend := -1
+
+if isColored
+    refHigh := high
+    refLow  := low
+
+candleColor = bothSweep   ? bothColor    :
+              longSignal  ? bullColor    :
+              shortSignal ? bearColor    :
+              neutralColor
+
+plotcandle(open, high, low, close,
+     color       = candleColor,
+     wickcolor   = candleColor,
+     bordercolor = candleColor,
+     display     = display.all - display.status_line)
+
+prevDir      = lastDirectionalTrend[1]
+trueReversal = (prevDir == 1 and lastDirectionalTrend == -1) or
+               (prevDir == -1 and lastDirectionalTrend == 1)
+
+bgColor = trueReversal and lastDirectionalTrend == 1  ? color.new(bullColor, 90) :
+          trueReversal and lastDirectionalTrend == -1 ? color.new(bearColor, 90) : na
+
+bgcolor(showSignal ? bgColor : na)
+
+
+// ============================================================================
+// CISD FVG
+// ============================================================================
+show_fvg        = input.bool(true, 'CISD FVG')
+max_bars_extend = input.int(50,   'Maximum Bars to Extend', minval = 10, maxval = 500)
+
+var array<box> fvg_boxes      = array.new_box()
+var array<int> fvg_start_bars = array.new_int()
+
+isColored1   = isColored[1]
+isColored2   = isColored[2]
+threeColored = isColored and isColored1 and isColored2
+
+check_fvg_condition() =>
+    float gap_top    = 0.0
+    float gap_bottom = 0.0
+    bool  is_bull    = false
+    bool  is_bear    = false
+
+    if high[2] < low
+        gap_top    := low
+        gap_bottom := high[2]
+        is_bull    := true
+    else if low[2] > high
+        gap_top    := low[2]
+        gap_bottom := high
+        is_bear    := true
+
+    [is_bull or is_bear, gap_top, gap_bottom, is_bull]
+
+box_touched(box_top, box_bottom) =>
+    not (low > box_top or high < box_bottom)
+
+if array.size(fvg_boxes) > 0
+    for i = array.size(fvg_boxes) - 1 to 0 by 1
+        b         = array.get(fvg_boxes, i)
+        start_bar = array.get(fvg_start_bars, i)
+
+        if not na(b)
+            box_top       = box.get_top(b)
+            box_bottom    = box.get_bottom(b)
+            box_right     = box.get_right(b)
+            bars_extended = bar_index - start_bar
+
+            if bars_extended >= max_bars_extend
+                array.remove(fvg_boxes, i)
+                array.remove(fvg_start_bars, i)
+
+            else if box_right == bar_index and box_touched(box_top, box_bottom)
+                array.remove(fvg_boxes, i)
+                array.remove(fvg_start_bars, i)
+
+            else if box_right == bar_index
+                box.set_right(b, bar_index + 1)
+
+[is_fvg, fvg_top, fvg_bottom, is_bull_fvg] = check_fvg_condition()
+
+if is_fvg and show_fvg and threeColored
+    fvg_color = is_bull_fvg ? color.new(bullColor, 80) : color.new(bearColor, 80)
+
+    b = box.new(bar_index[2], fvg_top, bar_index + 1, fvg_bottom,
+         border_color = color.new(fvg_color, 100),
+         bgcolor      = fvg_color,
+         border_width = 0)
+
+    array.push(fvg_boxes, b)
+    array.push(fvg_start_bars, bar_index)
