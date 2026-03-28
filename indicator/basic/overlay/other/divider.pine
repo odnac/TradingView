@@ -2,53 +2,79 @@
 indicator("Divider [odnac]", overlay = true, max_lines_count = 500)
 
 // ============================================================================
-// DIVIDERS
+// DIVIDERS SETTINGS
 // ============================================================================
-showWeeklyDiver  = input.bool(true, 'Show Weekly Divider', group = 'Dividers')
-showDailyDiver   = input.bool(true, 'Show Daily Divider', group = 'Dividers')
-showH4Diver  = input.bool(false, 'Show H4 Divider', group = 'Dividers')
-showH1Diver  = input.bool(false, 'Show H1 Divider', group = 'Dividers')
+showWeeklyDiver  = input.bool(true,  'Show Weekly Divider', group = 'Dividers')
+showDailyDiver   = input.bool(true,  'Show Daily Divider',  group = 'Dividers')
+showH4Diver      = input.bool(false, 'Show H4 Divider',     group = 'Dividers')
+showH1Diver      = input.bool(false, 'Show H1 Divider',     group = 'Dividers')
 
+// Timeframe Visibility Logic
 showWeeklyTimeframe = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 240
 showDailyTimeframe  = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 60
-showH4Timeframe = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 30
-showH1Timeframe = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 30
+showH4Timeframe     = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 30
+showH1Timeframe     = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 30
 
-is_new_week  = dayofweek == dayofweek.sunday and dayofweek[1] != dayofweek.sunday
-is_new_day   = dayofmonth != dayofmonth[1]
-is_new_h4  = hour != hour[1] and hour % 4 == 0
-is_new_h1  = hour != hour[1]
+// Trigger Conditions (Past)
+is_new_week = dayofweek == dayofweek.sunday and dayofweek[1] != dayofweek.sunday
+is_new_day  = dayofmonth != dayofmonth[1]
+is_new_h4   = hour != hour[1] and hour % 4 == 0
+is_new_h1   = hour != hour[1]
 
+// ============================================================================
+// DRAWING PAST DIVIDERS
+// ============================================================================
 if showWeeklyDiver and is_new_week and showWeeklyTimeframe
     line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 70), extend = extend.both, style = line.style_dashed)
 
 if showDailyDiver and is_new_day and showDailyTimeframe
     line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dashed)
 
-if showH4Diver and is_new_h4 and not is_new_day and showH4Timeframe
+if showH4Diver and is_new_h4 and showH4Timeframe
     line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dotted)
 
-if showH1Diver and is_new_h1 and not is_new_day and showH1Timeframe
+if showH1Diver and is_new_h1 and showH1Timeframe
     line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dotted)
 
 // ============================================================================
-// FUTURE DIVIDERS
+// FUTURE DIVIDERS (Real-time Prediction)
 // ============================================================================
-var line futureDayLine = na
-var line futureH1Line  = na
+var line futureWeekLine = na
+var line futureDayLine  = na
+var line futureH4Line   = na
+var line futureH1Line   = na
 
 if barstate.islast
-    int minutesPerBar = timeframe.multiplier
+    int mPBar = timeframe.multiplier // Minutes per bar
 
+    // 1. Next Weekly (W1)
+    if showWeeklyDiver and showWeeklyTimeframe
+        line.delete(futureWeekLine)
+        int daysToSunday = (8 - dayofweek) % 7
+        daysToSunday := daysToSunday == 0 ? 7 : daysToSunday
+        int minsToNextW  = (daysToSunday * 24 * 60) - (hour * 60 + minute)
+        int barsToNextW  = math.ceil(minsToNextW / mPBar)
+        futureWeekLine := line.new(bar_index + barsToNextW, close, bar_index + barsToNextW, close, color = color.rgb(255, 255, 255, 70), extend = extend.both, style = line.style_dashed)
+
+    // 2. Next Daily (D1)
     if showDailyDiver and showDailyTimeframe
         line.delete(futureDayLine)
-        int currentMinutes  = hour * 60 + minute
-        int minutesToNextDay = 24 * 60 - currentMinutes
-        int barsToNextDay   = math.ceil(minutesToNextDay / minutesPerBar)
-        futureDayLine := line.new(bar_index + barsToNextDay, close + syminfo.mintick, bar_index + barsToNextDay, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dashed)
+        int minsToNextD = (24 * 60) - (hour * 60 + minute)
+        int barsToNextD = math.ceil(minsToNextD / mPBar)
+        futureDayLine := line.new(bar_index + barsToNextD, close, bar_index + barsToNextD, close, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dashed)
 
+    // 3. Next H4
+    if showH4Diver and showH4Timeframe
+        line.delete(futureH4Line)
+        int currentH     = hour
+        int nextH4       = (math.floor(currentH / 4) + 1) * 4
+        int minsToNextH4 = (nextH4 * 60) - (currentH * 60 + minute)
+        int barsToNextH4 = math.ceil(minsToNextH4 / mPBar)
+        futureH4Line := line.new(bar_index + barsToNextH4, close, bar_index + barsToNextH4, close, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dotted)
+
+    // 4. Next H1
     if showH1Diver and showH1Timeframe
         line.delete(futureH1Line)
-        int minutesToNextH = 60 - minute
-        int barsToNextH    = math.ceil(minutesToNextH / minutesPerBar)
-        futureH1Line := line.new(bar_index + barsToNextH, close + syminfo.mintick, bar_index + barsToNextH, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dotted)
+        int minsToNextH1 = 60 - minute
+        int barsToNextH1 = math.ceil(minsToNextH1 / mPBar)
+        futureH1Line := line.new(bar_index + barsToNextH1, close, bar_index + barsToNextH1, close, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dotted)
