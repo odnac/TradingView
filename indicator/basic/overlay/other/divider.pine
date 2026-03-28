@@ -1,5 +1,5 @@
 //@version=6
-indicator("Divider [odnac]", overlay = true)
+indicator("Divider [odnac]", overlay = true, max_lines_count = 500)
 
 // ============================================================================
 // DIVIDERS
@@ -30,3 +30,25 @@ if showH4Diver and is_new_h4 and not is_new_day and showH4Timeframe
 
 if showH1Diver and is_new_h1 and not is_new_day and showH1Timeframe
     line.new(bar_index, close + syminfo.mintick, bar_index, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dotted)
+
+// ============================================================================
+// FUTURE DIVIDERS
+// ============================================================================
+var line futureDayLine = na
+var line futureH1Line  = na
+
+if barstate.islast
+    int minutesPerBar = timeframe.multiplier
+
+    if showDailyDiver and showDailyTimeframe
+        line.delete(futureDayLine)
+        int currentMinutes  = hour * 60 + minute
+        int minutesToNextDay = 24 * 60 - currentMinutes
+        int barsToNextDay   = math.ceil(minutesToNextDay / minutesPerBar)
+        futureDayLine := line.new(bar_index + barsToNextDay, close + syminfo.mintick, bar_index + barsToNextDay, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dashed)
+
+    if showH1Diver and showH1Timeframe
+        line.delete(futureH1Line)
+        int minutesToNextH = 60 - minute
+        int barsToNextH    = math.ceil(minutesToNextH / minutesPerBar)
+        futureH1Line := line.new(bar_index + barsToNextH, close + syminfo.mintick, bar_index + barsToNextH, close - syminfo.mintick, color = color.rgb(255, 255, 255, 85), extend = extend.both, style = line.style_dotted)
