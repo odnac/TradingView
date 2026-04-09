@@ -1,0 +1,42 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// © custom indicator
+
+//@version=6
+indicator(title = 'MA 24H with 24H Change %', shorttitle = 'MA 24H Change', overlay = true)
+
+frame = timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 60
+
+ma_type = input.string('EMA', 'MA type', options = ['SMA', 'EMA', 'WMA', 'VWMA', 'HMA'])
+src = input.source(close, 'source')
+
+tf_minutes = timeframe.in_seconds() / 60
+period = math.round(1440 / tf_minutes)
+period := math.max(period, 1)
+
+hma(s, l) =>
+    wma1 = ta.wma(s, l / 2)
+    wma2 = ta.wma(s, l)
+    ta.wma(2 * wma1 - wma2, math.round(math.sqrt(l)))
+
+ma_value = ma_type == 'SMA' ? ta.sma(src, period) : ma_type == 'EMA' ? ta.ema(src, period) : ma_type == 'WMA' ? ta.wma(src, period) : ma_type == 'VWMA' ? ta.vwma(src, period) : hma(src, period)
+
+ma_color = ma_value > ma_value[1] ? color.new(#26a69a, 0) : color.new(#ef5350, 0)
+
+plot(frame ? ma_value : na, title = 'MA 24H', color = ma_color, linewidth = 2)
+
+price_24h_ago = src[period]
+
+change_24h = ((src - price_24h_ago) / price_24h_ago) * 100
+
+label_color = change_24h >= 0 ? #26a69a : #ef5350
+prefix = change_24h >= 0 ? "+" : ""
+label_text = prefix + str.tostring(change_24h, "#.##") + "%"
+
+// var label chg_label = na
+// if frame and barstate.islast
+//     label.delete(chg_label)
+//     chg_label := label.new(x = bar_index, y = ma_value, text = label_text, 
+//                           style = label.style_label_left, 
+//                           color = color.new(label_color, 100), // 배경 투명
+//                           textcolor = label_color, 
+//                           size = size.normal)
