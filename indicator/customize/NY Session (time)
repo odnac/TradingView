@@ -1,0 +1,147 @@
+//@version=6
+indicator('NY Session (time)', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+displayOption = display.all - display.status_line
+
+// ============================================================================
+// Time and Session State Definitions
+// ============================================================================
+isMarketOpen  = not na(time('1', '0930-1600', 'America/New_York'))
+isNineThirty  = hour(time, 'America/New_York') == 9 and minute(time, 'America/New_York') == 30
+isMarketClose = isMarketOpen[1] and not isMarketOpen
+
+nyHour   = hour(time, 'America/New_York')
+nyMinute = minute(time, 'America/New_York')
+
+
+// ============================================================================
+// 1. ORB (Opening Range Breakout)
+// ============================================================================
+orbMinutes   = input.int(15, 'Opening Range (Minutes)', minval = 1, group = 'ORB Settings')
+showOrbLines = input.bool(true, 'Show ORB High/Low Lines', group = 'ORB Settings')
+showBg       = input.bool(true, 'Show Opening Range Background', group = 'ORB Settings')
+
+pad2(n) =>
+    n < 10 ? '0' + str.tostring(n) : str.tostring(n)
+
+totalMin     = 9 * 60 + 30 + orbMinutes
+endHour      = int(math.floor(totalMin / 60.0))
+endMin       = totalMin % 60
+sessionRange = '0930-' + pad2(endHour) + pad2(endMin)
+
+inORB        = not na(time('1', sessionRange, 'America/New_York'))
+
+bgcolor(showBg and inORB ? color.new(#1faeda, 90) : na)
+
+var float orbHigh     = na
+var float orbLow      = na
+var int   orbHighBar  = na
+var int   orbLowBar   = na
+var line  orbHighLine = na
+var line  orbLowLine  = na
+
+if isNineThirty
+    orbHigh     := na
+    orbLow      := na
+    orbHighBar  := na
+    orbLowBar   := na
+    orbHighLine := na
+    orbLowLine  := na
+
+if inORB
+    if na(orbHigh) or high > orbHigh
+        orbHigh    := high
+        orbHighBar := bar_index
+    if na(orbLow) or low < orbLow
+        orbLow     := low
+        orbLowBar  := bar_index
+
+orbJustEnded = inORB[1] and not inORB
+
+if showOrbLines and orbJustEnded and not na(orbHigh) and not na(orbLow)
+    orbHighLine := line.new(x1 = orbHighBar, y1 = orbHigh, x2 = bar_index, y2 = orbHigh, color = color.new(#1faeda, 65), style = line.style_solid, extend = extend.none)
+    orbLowLine  := line.new(x1 = orbLowBar, y1 = orbLow, x2 = bar_index, y2 = orbLow, color = color.new(#1faeda, 65), style = line.style_solid, extend = extend.none)
+
+if showOrbLines and isMarketOpen and not na(orbHighLine)
+    line.set_x2(orbHighLine, bar_index)
+    line.set_x2(orbLowLine, bar_index)
+
+
+// ============================================================================
+// 2. ICT Macro Background Highlight (09:50~10:10 / 10:50~11:10 ET)
+// ============================================================================
+showMacroBg  = input.bool(true, 'Highlight ICT Macro Hours', group = 'Macro Settings')
+macroBgColor = input.color(color.new(#dbdbdb, 92), 'Macro Background Color', group = 'Macro Settings')
+
+bool inMacro1 = not na(time('1', '0950-1010', 'America/New_York'))
+bool inMacro2 = not na(time('1', '1050-1110', 'America/New_York'))
+
+bgcolor(showMacroBg and (inMacro1 or inMacro2) ? macroBgColor : na)
+
+
+// ============================================================================
+// 3. NY Session Label (%) and Percentage Change Calculation
+// ============================================================================
+textColor    = input.color(color.white, 'Text Color', group = 'NY Session Label')
+posColor     = input.color(color.new(color.green, 0), 'Bullish Color', group = 'NY Session Label')
+negColor     = input.color(color.new(color.red, 0), 'Bearish Color', group = 'NY Session Label')
+neutralColor = input.color(color.gray, 'Neutral Color', group = 'NY Session Label')
+labelSize    = input.string('normal', 'Label Size', options = ['tiny', 'small', 'normal', 'large', 'huge'], group = 'NY Session Label', display = displayOption)
+
+var float marketOpenPrice = na
+
+if isNineThirty
+    marketOpenPrice := open
+
+pctChange = not na(marketOpenPrice) and marketOpenPrice != 0 ? (close - marketOpenPrice) / marketOpenPrice * 100 : na
+
+var label lbl = na
+
+if isMarketOpen and not na(pctChange)
+    if barstate.islast or barstate.isrealtime
+        label.delete(lbl)
+
+        labelColor = pctChange > 0 ? posColor : pctChange < 0 ? negColor : neutralColor
+        sign       = pctChange > 0 ? '▲' : pctChange < 0 ? '▼' : '◆'
+        txtStr     = sign + ' ' + str.tostring(math.abs(pctChange), '#.##') + '%'
+
+        lbl := label.new(x = bar_index + 2, y = close, text = txtStr, color = labelColor, textcolor = textColor, style = label.style_label_left, size = labelSize == 'tiny' ? size.tiny : labelSize == 'small' ? size.small : labelSize == 'normal' ? size.normal : labelSize == 'large' ? size.large : size.huge, tooltip = 'US Market Open: ' + str.tostring(marketOpenPrice, '#.##') + '\nCurrent Price: ' + str.tostring(close, '#.##') + '\nChange: ' + str.tostring(pctChange, '#.##') + '%')
+
+if isMarketClose
+    label.delete(lbl)
+    lbl := na
+
+
+// ============================================================================
+// 4. 15m NY Session Divider (1m Chart Only)
+// ============================================================================
+showDivider    = input.bool(true, 'Show NY Session 15m Vertical Line', group = 'Divider Settings')
+divLineColor   = input.color(color.rgb(255, 255, 255, 85), title = 'Line Color', group = 'Divider Settings', display = displayOption)
+divLineStyleIn = input.string('Dashed (---)', title = 'Line Style', options = ['Solid (───)', 'Dashed (---)', 'Dotted (···)'], group = 'Divider Settings', display = displayOption)
+divLineWidth   = input.int(1, title = 'Line Width', minval = 1, maxval = 4, group = 'Divider Settings', display = displayOption)
+
+string divLineStyle = divLineStyleIn == 'Solid (───)' ? line.style_solid :
+                      divLineStyleIn == 'Dotted (···)' ? line.style_dotted :
+                      line.style_dashed
+
+bool isOneMinChart = timeframe.isintraday and timeframe.multiplier == 1
+bool is15mTrigger  = (nyMinute % 15 == 0) and (nyMinute[1] % 15 != 0 or nyMinute != nyMinute[1])
+
+if showDivider and isOneMinChart and isMarketOpen and is15mTrigger
+    line.new(x1 = bar_index, y1 = close + syminfo.mintick, 
+             x2 = bar_index, y2 = close - syminfo.mintick,
+             color = divLineColor, width = divLineWidth, extend = extend.both, style = divLineStyle)
+
+var line futureDivLine = na
+
+if showDivider and barstate.islast and isOneMinChart and isMarketOpen
+    line.delete(futureDivLine)
+    
+    int minsToNext   = 15 - (nyMinute % 15)
+    int totalMinsNow = nyHour * 60 + nyMinute
+    int minsToClose  = (16 * 60) - totalMinsNow
+    
+    if minsToNext <= minsToClose
+        futureDivLine := line.new(x1 = bar_index + minsToNext, y1 = close, 
+                                  x2 = bar_index + minsToNext, y2 = close,
+                                  color = divLineColor, width = divLineWidth, extend = extend.both, style = divLineStyle)
