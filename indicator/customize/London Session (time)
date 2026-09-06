@@ -1,0 +1,118 @@
+//@version=6
+indicator('London Session (time)', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+displayOption = display.all - display.status_line
+
+// ============================================================================
+// Time and Session State Definitions (London Stock Exchange: 08:00-16:30 Europe/London)
+// ============================================================================
+showWeekend = input.bool(false, 'Show Weekend Data', group = 'General Settings')
+isWeekend   = dayofweek(time, 'Europe/London') == dayofweek.saturday or dayofweek(time, 'Europe/London') == dayofweek.sunday
+weekendOK   = showWeekend or not isWeekend
+
+isMarketOpen  = not na(time('1', '0800-1630', 'Europe/London')) and weekendOK
+isSessionOpen = hour(time, 'Europe/London') == 8 and minute(time, 'Europe/London') == 0
+isMarketClose = isMarketOpen[1] and not isMarketOpen
+
+londonHour   = hour(time, 'Europe/London')
+londonMinute = minute(time, 'Europe/London')
+
+
+// ============================================================================
+// 1. ORB (Opening Range Breakout)
+// ============================================================================
+orbMinutes   = input.int(15, 'Opening Range (min)', minval = 1, group = 'ORB Settings')
+showOrbLines = input.bool(true, 'Show ORB High/Low Lines', group = 'ORB Settings')
+showBg       = input.bool(true, 'Show Opening Range Background', group = 'ORB Settings')
+
+pad2(n) =>
+    n < 10 ? '0' + str.tostring(n) : str.tostring(n)
+
+totalMin     = 8 * 60 + 0 + orbMinutes
+endHour      = int(math.floor(totalMin / 60.0))
+endMin       = totalMin % 60
+sessionRange = '0800-' + pad2(endHour) + pad2(endMin)
+
+inORB        = not na(time('1', sessionRange, 'Europe/London')) and weekendOK
+
+bgcolor(showBg and inORB ? color.new(#3f51b5, 90) : na)
+
+var float orbHigh     = na
+var float orbLow      = na
+var int   orbHighBar  = na
+var int   orbLowBar   = na
+var line  orbHighLine = na
+var line  orbLowLine  = na
+
+if isSessionOpen
+    orbHigh     := na
+    orbLow      := na
+    orbHighBar  := na
+    orbLowBar   := na
+    orbHighLine := na
+    orbLowLine  := na
+
+if inORB
+    if na(orbHigh) or high > orbHigh
+        orbHigh     := high
+        orbHighBar := bar_index
+    if na(orbLow) or low < orbLow
+        orbLow      := low
+        orbLowBar   := bar_index
+
+orbJustEnded = inORB[1] and not inORB
+
+if showOrbLines and orbJustEnded and not na(orbHigh) and not na(orbLow)
+    orbHighLine := line.new(x1 = orbHighBar, y1 = orbHigh, x2 = bar_index, y2 = orbHigh, color = color.new(#3f51b5, 65), style = line.style_solid, extend = extend.none)
+    orbLowLine  := line.new(x1 = orbLowBar, y1 = orbLow, x2 = bar_index, y2 = orbLow, color = color.new(#3f51b5, 65), style = line.style_solid, extend = extend.none)
+
+if showOrbLines and isMarketOpen and not na(orbHighLine)
+    line.set_x2(orbHighLine, bar_index)
+    line.set_x2(orbLowLine, bar_index)
+
+// ============================================================================
+// 2. ICT Macro Background Highlight
+// (ICT London Macro sessions based on NY times 02:33-03:00 / 04:03-04:30,
+// adjusted for the 5-hour NY-London time difference to local London time)
+// ============================================================================
+showMacro1   = input.bool(false, 'Show Macro 1 (07:33-08:00)', group = 'Macro Settings')
+showMacro2   = input.bool(true, 'Show Macro 2 (09:03-09:30)', group = 'Macro Settings')
+macroBgColor = input.color(color.new(#dbdbdb, 92), 'Macro Background Color', group = 'Macro Settings')
+
+bool inMacro1 = showMacro1 and not na(time('1', '0733-0800', 'Europe/London')) and weekendOK
+bool inMacro2 = showMacro2 and not na(time('1', '0903-0930', 'Europe/London')) and weekendOK
+
+bgcolor(inMacro1 or inMacro2 ? macroBgColor : na)
+
+
+// ============================================================================
+// 3. London Session Label (%) & Percentage Change Calculation
+// ============================================================================
+textColor    = input.color(color.white, 'Text Color', group = 'London Session Label')
+posColor     = input.color(color.new(color.green, 0), 'Bullish Color', group = 'London Session Label')
+negColor     = input.color(color.new(color.red, 0), 'Bearish Color', group = 'London Session Label')
+neutralColor = input.color(color.gray, 'Neutral Color', group = 'London Session Label')
+labelSize    = input.string('normal', 'Label Size', options = ['tiny', 'small', 'normal', 'large', 'huge'], group = 'London Session Label', display = displayOption)
+
+var float marketOpenPrice = na
+
+if isSessionOpen
+    marketOpenPrice := open
+
+pctChange = not na(marketOpenPrice) and marketOpenPrice != 0 ? (close - marketOpenPrice) / marketOpenPrice * 100 : na
+
+var label lbl = na
+
+if isMarketOpen and not na(pctChange)
+    if barstate.islast or barstate.isrealtime
+        label.delete(lbl)
+
+        labelColor = pctChange > 0 ? posColor : pctChange < 0 ? negColor : neutralColor
+        sign       = pctChange > 0 ? '▲' : pctChange < 0 ? '▼' : '◆'
+        txtStr     = sign + ' ' + str.tostring(math.abs(pctChange), '#.##') + '%'
+
+        lbl := label.new(x = bar_index + 2, y = close, text = txtStr, color = labelColor, textcolor = textColor, style = label.style_label_left, size = labelSize == 'tiny' ? size.tiny : labelSize == 'small' ? size.small : labelSize == 'normal' ? size.normal : labelSize == 'large' ? size.large : size.huge, tooltip = 'London Open Price: ' + str.tostring(marketOpenPrice, '#.##') + '\nCurrent Price: ' + str.tostring(close, '#.##') + '\nChange: ' + str.tostring(pctChange, '#.##') + '%')
+
+if isMarketClose
+    label.delete(lbl)
+    lbl := na
